@@ -1,7 +1,5 @@
 # Gauntlet: The Deeper Dungeons — an original level set
 
-Welcome to Gauntlet: The Even Deeper and Sloppy Dungeons
-
 `gauntlet_levels.d64` holds the construction kit and 128 original levels.
 Nothing from either shipped set is reproduced: the disk carries a tool and a
 new set of maps, and needs a Gauntlet game disk to run. Deeper Dungeons is
