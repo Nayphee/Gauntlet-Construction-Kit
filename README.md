@@ -6,6 +6,11 @@ makes complete 128-level disks for it.
 Swap the finished `.d64` in at the game's press-fire prompt: the game only
 reads `LEVEL nnn` once it is running, so it takes its levels from there.
 
+A **Deeper Dungeons** disk is strongly recommended - it carries bug fixes
+the original release lacks. An original *Gauntlet* disk works too, provided
+it is not one of the versions that pack the levels into batched files. See
+*Which game disk to use* below.
+
 ## Build a disk
 
     python3 makedisk.py                 # gauntlet_levels.d64, seed 0
@@ -28,11 +33,59 @@ between:
     python3 genlevels.py --seed 7 --out set7
     python3 mklevdisk.py --levels set7 --kit gauntkit.prg --out disk.d64
 
+## Which game disk to use
+
+**A Deeper Dungeons disk is strongly recommended.** Not for its levels -
+this replaces those - but because its `GAUNTPROG` carries bug fixes the
+original release does not, and the original is prone to crashing.
+
+**An original Gauntlet disk will also work**, so long as it holds its levels
+as separate `LEVEL nnn` files. You get the same editing and the same
+generated set; you also get the crashes.
+
+The fix is small and specific: Deeper Dungeons clears four bytes of
+per-monster state at the start of every level that the earlier build leaves
+holding whatever the previous level put there. The routine that reads them
+abandons its work when it finds a non-zero value, so the leak silently
+disables that processing until something else resets it. Every other file
+on the two disks is byte-identical, so that one change is the whole
+difference between the builds. `GAME-NOTES.md` has the addresses.
+
+**Some Gauntlet releases will not work with this at all.** There are disk
+versions that store the levels in batches rather than as 128 separate
+`LEVEL nnn` files. The editor loads and saves one named level file at a
+time, so it cannot read those, and a disk built here will not feed them.
+
+The test is quick: `LOAD"$",8` on your game disk. If it shows a long list
+of `LEVEL 001` .. `LEVEL 128` entries, you are fine. If instead it shows a
+short list with single-letter files of about 21 blocks each - `A`, `B`, `C`
+and so on - it is a batched release and none of this applies.
+
+One such disk examined here holds its levels in fifteen files named `A` to
+`O`, all loading at `$2000`: `A` carries seven levels and the rest ten
+apiece, each in a fixed 512-byte slot, 147 slots for a 128-level set. The
+records inside those slots are the same format this project documents -
+many match a separate-files disk byte for byte - so the levels are
+readable, but the packing, the ordering and the loader are all different.
+
+Those levels came from the **cassette**: all fifteen files are
+byte-identical to blocks on side 2 of the Gauntlet tape, down to the odd
+seven-level first file matching the tape's short first block. Whether the
+disk was an official release mastered from the tape or a conversion by
+someone else is not settled - the disk examined was cracked, but its title
+screen had been properly rewritten for disk, which either would do.
+`GAME-NOTES.md` has the evidence.
+
+Fixed-size slots are what tape needs, since a tape cannot seek to a named
+file. Every level sits on side 2 in blocks of ten slots, and those blocks
+are what the batched disk stores as files.
+
 ## The editor
 
 `gauntkit.prg` loads with `LOAD"*",8` and runs with `RUN`. It is pure
 machine code behind a one-line BASIC stub, and edits any level file on a
-Gauntlet or Deeper Dungeons disk. Press `?` for the key list.
+Gauntlet or Deeper Dungeons disk that stores them as separate `LEVEL nnn`
+files. Press `?` for the key list.
 
 The panel shows the byte cost of the level as you work: the format allows
 511 bytes and a level that will not fit cannot be saved, so the count
@@ -84,6 +137,19 @@ expands - roughly twice the food and three times the magic.
 
 All of it was worked out from the binaries and the 256 shipped levels.
 Where a reading is uncertain the documents say so rather than guessing.
+
+## How this was made
+
+The disassembly, the editor, the level generator and the documentation were
+all produced with Claude Opus 5 (Anthropic), working from a disk image of
+the game and a 6502 simulator.
+
+The work was empirical rather than clever: read the game's code to find out
+what a byte in a level file means, then check the reading against all 256
+shipped levels, and keep the checkers honest by breaking something on
+purpose to confirm they complain. Several confident conclusions turned out
+to be wrong and were corrected by measurement - the documents say where a
+reading is still uncertain rather than smoothing it over.
 
 ## Copyright and trademarks
 

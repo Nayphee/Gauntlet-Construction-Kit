@@ -1,8 +1,16 @@
 # What the game does with a level
 
+> *Gauntlet* (c) 1985 Atari Games Corporation; Commodore 64 conversion
+> (c) 1986 U.S. Gold Ltd; *Gauntlet: The Deeper Dungeons* (c) 1987
+> U.S. Gold Ltd. This is unofficial documentation of how the file
+> format works, written from a disassembly. No original code, level
+> data or artwork is reproduced here.
+
+
 Notes from disassembling `GAUNTPROG $8000` on the Gauntlet and Gauntlet:
-The Deeper Dungeons disks. Everything here was worked out from the binary
-and from the 256 shipped levels; where a reading is uncertain it says so.
+The Deeper Dungeons disks, produced with Claude Opus 5 (Anthropic).
+Everything here was worked out from the binary and from the 256 shipped
+levels; where a reading is uncertain it says so.
 
 Addresses are for the Deeper Dungeons build unless stated. The two builds
 differ by one insertion of fourteen bytes, so most addresses below `$996B`
@@ -18,6 +26,121 @@ grid thereafter.
 
 Flags live at `$0A01` and `$0A02`, the first two bytes of the loaded
 record.
+
+## Which releases this applies to
+
+The findings here are from releases that hold their levels as 128 separate
+`LEVEL nnn` files, and from two builds of `GAUNTPROG` that differ by
+fourteen bytes.
+
+Other releases pack the levels into batches. One examined here holds them
+in fifteen files named `A` to `O`, all loading at `$2000`, with `A` holding
+seven levels and the rest ten apiece in fixed 512-byte slots - 147 slots
+for a 128-level set, so nineteen go spare. The **records inside those slots
+are the same format** described in `gauntlet_dd_level_format.md`, and many
+are byte-identical to the corresponding file on a separate-files disk, but
+the levels appear in a different order and some differ outright.
+
+That release's `GAUNTPROG` is a third build, 20,465 bytes against 20,477,
+sharing only about 7% of its code with either of the two described below.
+Nothing in the rest of this document should be assumed to hold for it: the
+addresses will be different and the loader certainly is.
+
+### The cassette version
+
+The cassette release of Deeper Dungeons uses the **same 512-byte slots**.
+**Every level is on side 2.** They sit in fourteen blocks of ten slots,
+the first at `$00055` and the rest following at even intervals with about
+`$56` bytes of loader framing between them - 140 slots for a 128-level set.
+Within a block the slots are exactly `$200` apart and the levels are in
+order, with the treasure rooms interleaved: the first block holds levels 1
+to 8, then 118, then one more.
+
+A block is therefore 10 x 512 = 5,120 bytes, which is **exactly the data
+size of each `A`-`O` file on the batched disk**. The disk files are tape
+blocks written to disk.
+
+Both layouts put eight ordinary levels first and the treasure rooms at the
+end of the block, but they are not the same block. The tape spends slot 8
+on a treasure room and slot 9 on the same filler level in every block; the
+batched disk uses slots 8 and 9 for two treasure rooms, and its first file
+holds seven slots rather than ten. So it shares the convention, not the
+mastering - though the two examined here are different products, one
+*Gauntlet* and one *Deeper Dungeons*, so some of that may be the difference
+between the games rather than between the media.
+
+### The batched disk carries the cassette's levels
+
+**Settled: the data came from the tape.** The batched disk's levels are the
+*Gauntlet* cassette's, block for block. Every one of its fifteen level files is **byte-identical**
+to a block on side 2 of the tape:
+
+| tape block | slots | levels | disk file |
+|-----------|-------|--------|-----------|
+| 1 at `$00055` | 7 | 1-7 | `A`, 3,585 bytes |
+| 2 at `$00EAB` | 10 | 8-15, 118, 119 | `B`, 5,120 bytes |
+| 3 at `$02301` | 10 | 16-23, 120, 121 | `C` |
+| ... | | | |
+| 15 at `$11709` | 6 | 112-117 | `O` |
+
+The short first block is the giveaway: seven slots on the tape, seven slots
+in file `A`. A disk release designed from scratch would have no reason to
+begin with a seven-level file and then switch to ten.
+
+Most of the other files match too - `GAUNT CHR $4800` (12,288 bytes),
+`PLYRS.SPR`, `GAUNTFONT $7000`, `DATATREASURE 446`, `PLAYER-$E000` and
+others are all byte-identical to stretches of tape side 1. `GAUNTPROG` is
+the exception, sharing only about 19% in runs of 32 bytes or more, which is
+what you would expect of a program whose tape loading has been replaced
+with disk loading.
+
+So the padding and the custom loader are not a disk design at all. They are
+the cassette's arrangement, carried over because whoever made the disk
+copied the blocks rather than rebuilding the release.
+
+**Not settled: who made it.** The disk examined is a cracked one, but that
+does not mean the layout is. Its title screen reads `LEAVE DISK IN DRIVE !`
+where the tape reads `LEAVE PLAY PRESSED ON TAPE` - the same fixed-width
+slot, both beginning `LEAVE`, so that line was deliberately rewritten for
+the medium. Mastering a disk release from the tape blocks and changing the
+prompt is exactly what a publisher would do, and also what a careful
+cracker would do. The evidence cannot separate them.
+
+So an official disk release in the `A`-`O` layout may well have existed.
+None has been seen here, and nothing above establishes one either way.
+
+Side 1 carries the program and asks the player to turn the tape over. Many
+of the level records are byte-identical to the file of the same number on
+the Deeper Dungeons disk.
+
+The tape is a turbo loader, two pulse lengths only - `$24` and `$42` in the
+`.tap`, one bit each, most significant first. Side 1 also holds a table of
+the loader's file names, `LEVEL 001` among them.
+
+That settles the shape of the thing. **Fixed-size slots are what tape
+needs**, because a tape cannot seek to a named file, and the block is the
+loading unit - what the player needs before the next tape stop. The batched
+disk releases carry the same 5,120-byte blocks as fifteen files.
+
+What the data cannot say is which release came first, or whether the disk
+layout was taken from the tape or both from a common source. The disks
+carry no dates and the builds share too little code to order them by their
+contents. The rest of the argument is circumstantial:
+
+* every batch loads to the same address, `$2000`, so they are meant to be
+  read one at a time into the same buffer
+* the slots are a fixed 512 bytes whatever the level actually needs, which
+  is what you want when you cannot seek: level *n* of a batch is always at
+  `$2000 + 512n`
+* a batch is 21 blocks, which holds ten slots with 214 bytes spare, so the
+  batch size was chosen to fit the slots rather than the other way round
+* the separate-files releases waste none of that: each level is its own
+  file, exactly as long as it needs to be
+
+Against it: the levels appear in a different order from the separate-files
+disks, and some differ outright, which a straight repackaging would not
+explain. The disk examined was also cracked, so some of that may not be
+original.
 
 ## Loading, and why a level disk can be swapped in
 
