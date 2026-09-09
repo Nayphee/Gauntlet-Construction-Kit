@@ -1,0 +1,57 @@
+# Gauntlet level disk builder
+
+Builds a C64 `.d64` holding the Gauntlet Construction Kit and 128
+procedurally generated levels. Swap the disk in at the game's press-fire
+prompt: the game only reads `LEVEL nnn` once it is running, so it takes its
+levels from there.
+
+## Building a disk
+
+    python3 makedisk.py                 # gauntlet_levels.d64, seed 0
+    python3 makedisk.py --seed 12       # a different 128 levels
+    python3 makedisk.py --out mine.d64 --keep mylevels
+
+Needs Python 3 and nothing else. Five files have to sit together:
+
+| file | what it is |
+|------|-----------|
+| `makedisk.py` | runs the two steps below |
+| `genlevels.py` | the level generator |
+| `gauntlet_dd.py` | the level format codec |
+| `mklevdisk.py` | the `.d64` writer |
+| `gauntkit.prg` | the editor, already assembled |
+
+The two steps also run on their own:
+
+    python3 genlevels.py --seed 7 --out set7
+    python3 mklevdisk.py --levels set7 --kit gauntkit.prg --out disk.d64
+
+## Checking a set
+
+`verify.py` puts every level through the editor's own machine code and
+applies the design rules. It needs two more files, `gcore.prg` and
+`symbols.json`, and a 6502 simulator on the path:
+
+    python3 verify.py
+
+## Rebuilding the editor
+
+Only needed if you change `gedit.asm`:
+
+    python3 build.py                    # assembles gedit.asm -> gauntkit.prg
+
+## What the generator aims at
+
+Figures are measured against the arcade original's own 128 levels, not
+against Deeper Dungeons, which is markedly more generous than the game it
+expands - roughly twice the food and three times the magic.
+
+| | arcade | this set |
+|---|--------|----------|
+| food per level | 5.9 | 5.5 |
+| magic per level | 1.2 | 1.0 |
+| treasure per level | 23.0 | 28.1 |
+| monsters per level | 33.9 | 40.6 |
+| walk to the exit | 68 steps | 56 |
+
+`LEVELS.md` describes the design rules in full.
