@@ -1,39 +1,39 @@
 ; ----------------------------------------------------------------------
-; gedit.asm - machine-language core for the Gauntlet Deeper Dungeons
-;             level editor.  Assembles to $8000, below a lowered BASIC
-;             memtop.  Memory map:
-;               $8000-$8bc0  code and the two 256-byte display tables
-;               $8c00-$8dff  512-byte level record buffer
-;               $8e00-$8ef9  wall-edit list, 125 entries
-;               $9000-$93ff  the 32x32 map, 1K-aligned for the DRAW wrap
+; gedit.asm - the Gauntlet Construction Kit: a level editor for the
+;             Commodore 64 game Gauntlet and Gauntlet: The Deeper
+;             Dungeons.  Edits any disk that holds its levels as 128
+;             separate LEVEL nnn files.
 ;
-; Entry points (call from BASIC with sys):
-;   $8000  decode   buf ($cc00) -> grid ($c800).  Port of the game's
-;                   own loader at $c43d.
-;   $8003  redraw   grid -> screen, 32 wide x 25 rows, scrolled by
-;                   scrtop (0-7).  Writes colour RAM too.
-;   $8006  loadlev  load the file named at fnbuf into buf, from dev
-;   $8018  newlvl   start a blank level: borders and a player start only.
-;                   Used when the disk holds no level files.
-
-;   $801e  edloop   the interactive editor loop: cursor, painting, palette,
-;                   scrolling and the live panel fields, all in ML.  Returns
-;                   to BASIC only when a key it does not handle is pressed,
-;                   leaving that key in lastky.  BASIC is off the hot path.
-
-
-;   $8021  panel    draw the whole side panel.  Was ~15 BASIC fields, each
-;                   built with str$/left$/mid$/asc - visibly slow.
-;   $8024  preview  clear every trap and trap-linked wall, then redraw:
-;                   the trap-firing preview, formerly a 1024-cell BASIC loop.
-;   $801b  count    tally traps and trap-linked walls into ntrap / nwall.
-;                   BASIC peeks the results; the same loop in BASIC took
-;                   seconds.
+; Pure machine code behind a one-line BASIC stub, "0 sys2100".  The stub
+; and the code are one file: the m/l is loaded straight to where it runs,
+; so there is no copier and no relocation.  build.py settles the sys
+; address by iteration, because it depends on where main lands, which
+; depends on the origin, which depends on the stub's length.
+;
+; Memory map:
+;   $080d-$271e  the BASIC stub, then code and tables
+;   $9800-$9bff  the 32x32 map, 1K-aligned for the DRAW wrap
+;   $9c00-$9cf9  wall-edit list, 125 entries of two bytes
+;   $9d00-$9eff  512-byte level record buffer
+;
+; The whole editor runs in edloop; it returns to BASIC only on quit.
+; Everything the panel shows - the cursor position, the tile under it,
+; the trap and trap-wall counts, the wall graphics and colour, the shot
+; mode, and the byte cost of the level as it stands - is maintained in
+; machine code, because the same work in BASIC was visibly slow.
 ;
 ; Zero page used: $22-$27, $fb-$fe.  All are free while BASIC is idle;
 ; nothing here returns to BASIC mid-use.
+;
+; CBM prg Studio syntax: open this in prg Studio and build it, with the
+; origin at $080D and a one-line BASIC stub of "0 SYS2100" in front.  The
+; python route, which settles the sys address by iteration and writes the
+; symbol table the automated checks need, is
+;   python3 build.py
+; and check with checkregs.py, checklegend.py and the three test suites.
 ; ----------------------------------------------------------------------
 
+; ---- equates ---------------------------------------------------------
 grid    = $9800                 ; 1024-byte map, one byte per cell.  Must stay
                                 ; 1K-aligned: the DRAW wrap masks the pointer
                                 ; high byte with AND #3
@@ -59,8 +59,13 @@ objhi   = $27
 enclo   = $28                   ; record write cursor (encode only)
 enchi   = $29
 
+; build.py rewrites this line as it settles the sys address
 *=$080d
 
+; ---- entry points ----------------------------------------------------
+; A jump table at a fixed address, so the checkers and the test suites can
+; call any routine by name without caring where the assembler put it.
+; genaddr.py writes these addresses out to symbols.json.
         jmp decode
         jmp redraw
         jmp loadlev

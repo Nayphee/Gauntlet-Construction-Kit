@@ -1,5 +1,12 @@
 # Gauntlet: The Deeper Dungeons (C64) — `LEVEL nnn` file format
 
+> *Gauntlet* (c) 1985 Atari Games Corporation; Commodore 64 conversion
+> (c) 1986 U.S. Gold Ltd; *Gauntlet: The Deeper Dungeons* (c) 1987
+> U.S. Gold Ltd. This is unofficial documentation of how the file
+> format works, written from a disassembly. No original code, level
+> data or artwork is reproduced here.
+
+
 Derived by disassembling the loader at **$C43D** inside `GAUNTPROG $8000`.
 All 128 level files on the disk decode and re-encode byte-for-byte, so the
 container and both payload sections are fully accounted for.

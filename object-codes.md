@@ -38,7 +38,7 @@ Generated from GAUNTPROG, the editor core and simulation. Columns marked *measur
 | `$2F` | TRAP | `@` | 230 in 75 lv | -- | passes through | -- | trap | sets $B62D; $B084 clears all traps and trap-walls | **firm** |
 | `$30` | TELEPORT | `[` | 312 in 68 lv | -- | passes through | -- | teleporter | sets $8E78,x=1; pairs with $18 at $B4F9 | **firm** |
 | `$31` | POISON | `W` | 314 in 75 lv | -- | destroyed | -- | poison | calls the centred-string printer at $B59E | **firm** |
-| `$32` | -- | `?` | unused | -- | blocks shot | -- | unused, behaves as a wall | blocked by the passability test at $92C0, so its missing step handler is never reached. Looks like keys in play; cannot be entered, shot or picked up | **firm** |
+| `$32` | -- | `?` | unused | -- | blocks shot | -- | unused, behaves as a wall | blocked by the passability test at $92C0, so its missing step handler is never reached. Draws as a string of keys in play but cannot be entered, shot or picked up. **Not in the editor palette** - see below | **firm** |
 | `$33` | DST WALL | `æ` | 1036 in 97 lv | -- | special | -- | destructible wall | stepping on it clears the cell at $B4EC | **firm** |
 | `$36` | EXIT | `` | 880 in 128 lv | -- | passes through | -- | exit | counted in $C812; $CA0C keeps one at random | **firm** |
 | `$37` | EXIT 4 | `` | 1 in 1 lv | -- | passes through | -- | exit to level 4 | the destination is chosen at $9A2B from the map address the exiting player stands on: $0CD2 sends them to level 4 and $0FE1 to level 8. Both shipped level 1s put an exit on those cells - Deeper Dungeons uses $37 and $38, the arcade original uses $36 on $0FE1 - so the codes are interchangeable and it is the address that matters. A static reading of the passability test at $92C0 says $37 and $38 are blocked, which contradicts the shipped data and play; that reading is wrong somewhere and has not been resolved | **uncertain** |
@@ -96,3 +96,29 @@ Generated from GAUNTPROG, the editor core and simulation. Columns marked *measur
 * I have never decoded the tile *graphics*. Everything here is behaviour read
   from handlers, so I cannot tell you which of a pair has the square handle.
 
+## `$32`, and why the editor will not place it
+
+`$32` has a graphic - it draws as a string of keys - and nothing else. It
+appears **zero times across all 256 shipped levels**, and the program never
+compares or loads it as an object code: the one `lda #$32` in the binary,
+at `$CA8F`, writes a screen character in an unrelated routine.
+
+What it does in play is nothing useful. The passability test at `$92C0`
+blocks it like a wall, so a player cannot step on it, and having no step
+handler there is nothing to reach even if they could. It cannot be shot
+away and it cannot be picked up. A level with one on it has a key-shaped
+lump of wall.
+
+The obvious reading is that it was meant to be keys dropped by a dying
+player, for the other player to collect - which would explain a graphic
+that exists, a code reserved next to the teleporter and the poison, and a
+feature that never shipped. That is a guess about intent and the code
+neither supports nor contradicts it; what the code does establish is that
+whatever it was for was never wired up.
+
+**The editor deliberately leaves it out of the palette.** Every other code
+the format can express is there, including the ones only one shipped level
+uses. This one is excluded because placing it can only produce a wall that
+looks like treasure, which is a way of misleading a player rather than a
+way of designing for them. The code is documented here so the omission is a
+decision on the record rather than an oversight.

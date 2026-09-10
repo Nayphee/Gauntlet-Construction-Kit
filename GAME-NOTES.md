@@ -163,6 +163,33 @@ shipped sets show no ramp past the introduction.
 `$AD13` counts down to the next treasure room, which is picked from files
 118-128 every four to seven levels.
 
+### Treasure rooms are timed
+
+`$8251` is set to 1 when a treasure room starts and 0 when it ends. It
+gates a routine at `$9E75` that runs every frame only while that flag is
+up:
+
+```asm
+$9E7B  dec $9def        ; a frame counter
+$9E7E  bne $9eb2
+$9E80  lda $9de9        ; the treasure-room clock
+$9E83  beq $9e8f        ; run out: stop the room
+$9E85  dec $9de9
+$9E88  lda #$ff
+$9E8A  sta $9def        ; reload, so it ticks once every 255 frames
+```
+
+The bonus is settled per player at `$AC13` from a count in `$AD11,x`:
+nothing collected gives the `NO BONUS` message at `$ACF1`, a haul gives
+the `TREASURES` tally at `$ACD3`. `$AEDC` is the flag that makes the room
+wind up once, at `$AEAF`, which the main loop calls from `$814D`.
+
+**This was documented the wrong way round at first.** The notes said there
+was no treasure-room timer and that the game did not know it had loaded
+one - an assertion made from not having found the code rather than from
+having looked for it. The routine above is what the play experience
+already said was there.
+
 ### The level 1 shortcuts
 
 `$99CE` runs during level setup and, **only when the level about to be
@@ -229,6 +256,19 @@ with trap-walls and no trap has walls that can never move; a level with a
 trap and no trap-walls has a trap that does nothing. Both shipped sets keep
 the two together.
 
+### The unused key graphic
+
+`$32` draws as a string of keys and does nothing. It is on none of the 256
+shipped levels, and the program never handles it as an object code - the
+passability test at `$92C0` blocks it like a wall, so it cannot be stepped
+on, shot or collected.
+
+It looks like an abandoned feature: keys dropped where a player died, for
+the other player to pick up. That is a reading of the graphic rather than
+something the code shows, and the code shows only that it was never wired
+up. `object-codes.md` has the detail and the reason the editor leaves it
+out of its palette.
+
 ### Breakable walls
 
 `$33` is an object, not a wall pen - it sits above `$13` and so looks like
@@ -239,8 +279,15 @@ a shot reaches `$1F`, `$33`, `$34`, `$35`, or a code in the range at
 
 ### Teleporters
 
-`$AF78` looks for a destination by scanning a **16 by 10 window** around the
-source, and `$8D23` needs at least two teleporters in its list. A lone
+`$AF78` looks for a destination by scanning a **16 by 10 window**, and the
+window is the *screen*: it starts from `$87BC` and `$87BE`, the scroll
+position, not from the teleporter. So the destination has to be on screen
+when the player steps on the source, and since the screen follows the
+player that means within roughly seven columns and four rows of the pad.
+A pair further apart than that does nothing at all when stood on. 91% of
+the arcade's pads have a partner inside that box.
+
+This was first documented as a window around the source, and `$8D23` needs at least two teleporters in its list. A lone
 teleporter does nothing. A partner more than fifteen columns or nine rows
 away will not be found.
 
@@ -280,18 +327,154 @@ those, which is why its graphics key stops at 2 and its colour key at 6.
 ## Friendly fire
 
 Bits 0 and 1 of flags A say what one player's shot does to the other: bit 0
-hurts, bit 1 stuns, neither is harmless. The shipped Deeper Dungeons set
-runs 102 harmless, 26 stun and none that hurt.
+hurts, bit 1 stuns, neither is harmless.
+
+**Bit 0 is never set on any shipped level.** Not one of the 256:
+
+| | harmless | stun | hurt |
+|---|---------|------|------|
+| arcade Gauntlet | 116 | 12 | 0 |
+| Deeper Dungeons | 102 | 26 | 0 |
+
+The game implements it properly. `$989C` reads bit 0 at level setup and
+prints `SHOTS NOW HURT OTHER PLAYERS`, then checks bit 1 for the stun
+message the same way, and `$AA30` reads it again in play to take the health
+off. So this is a working feature that no level ever switched on - unlike
+`$32`, which has a graphic and no code, this has code and no data.
+
+Why is not something the binary can answer, and it is worth resisting the
+obvious guess. Hurting a partner is not an aberration in this game: the
+competition between players is half of what Gauntlet is. Food and treasure
+go to whoever reaches them first, nobody agreed who should have them, and
+in the arcade each player's coins bought their own health, so every item
+taken was money off someone else's evening. The arguments were the point.
+
+Friendly fire became a proper feature in *Gauntlet II*, used on some of its
+levels. So bit 0 in this build reads less like a mistake and more like an
+idea that arrived a game too early - implemented, wired up, and left for
+the sequel to switch on.
 
 ## Stat potions
 
 `$19`-`$1E` are the six stat potions - armour, carrying, magic, shot power,
 shot speed, fight.
 
-**Neither shipped set places a single one on any of its 256 levels.** That
-is about as clear a statement as level data can make: they are not level
-furniture, and the game hands them out itself during play. A generator that
-places them is the odd one out.
+**Neither shipped set places a single one on any of its 256 levels**, and
+the reason is at `$A20A`: the game places them itself.
+
+```asm
+$A20A  lda #$ff
+$A20C  sta $a1ed        ; no potion this level
+$A20F  lda $9813        ; the level number
+$A212  cmp #$08
+$A214  bcc $a22c        ; below level 8, never
+$A216  jsr $a1f0        ; the random generator at $A1F0
+$A219  and #$0f         ; 0-15
+$A21B  sta $a1ed
+$A21E  cmp #$06
+$A220  bcs $a22c        ; 6..15, no potion this time
+$A222  ldx #$02         ; 0..5, place one and announce it
+$A224  jsr $add1
+$A227  jsr $ade6
+```
+
+Six chances in sixteen, and only from level 8 onward. The same roll picks
+*which* potion: 0 to 5, exactly the range of the six stat potions that
+never appear in level data. `$A1ED` holds the choice, `$FF` meaning none.
+
+**Treasure rooms are included.** The level setup at `$985F` splits on the
+level number:
+
+```asm
+$985F  lda $9813        ; the level number
+$9862  cmp #$76         ; $76 = 118, where the treasure rooms start
+$9864  bcc $9870        ; below 118: the ordinary level path
+$9866  jsr $ae86        ; 118 and up: the treasure-room path
+$9869  jsr $a20a        ; and this branch calls the potion routine too
+```
+
+Both branches reach `$A20A`, which only refuses below level 8, so a
+treasure room rolls for a hidden potion like any other level - and with
+around 600 empty cells in the shipped ones there is always somewhere to put
+it. A potion in a room with no monsters in it is free.
+
+The placing is at `$A1A3`. It shifts the index left twice, walks the map
+through `$C8E2` and `$C94D` looking for a spot, checks the candidate
+against `$F800`/`$F801` so it cannot land on the player, and writes the
+code into the map with `sta ($8e),y`.
+
+So a level file that carries a stat potion is adding to what the game does
+rather than replacing it - the game still rolls for its own. That is a
+reason for a generator to leave them alone, not a reason the format cannot
+hold them. All six are in the editor's palette, and placing one by hand is
+a perfectly good thing to do: it puts a potion exactly where you want it,
+on a level of your choosing, which is something the game's own roll can
+never be made to do.
+
+### Finding it
+
+Worth recording, because the obvious search fails. `FIND THE HIDDEN POTION`
+sits at `$A22F` and **nothing in the program refers to that address** - no
+word reference, no split load of `$2F` and `$A2`. Messages carry a two-byte
+prefix, the length and a flag, so the record actually begins at `$A22D`,
+and the code reads it as `lda $a22d`. The string is 22 characters and the
+bytes before it are `16 01`. The other messages have the same shape:
+`EXTRA ARMOUR` is 12 characters behind `0c 01`, `YOU HAVE FOUND A` is 16
+behind `10 01`.
+
+## The turbo tape format
+
+Recovered by decoding the ROM-loaded bootstrap at the head of the tape,
+following its two layers of self-decryption, and disassembling the loader
+it copies out of screen memory into `$0830`.
+
+The bootstrap arrives as an ordinary ROM-format file called `GAUNTLET`,
+loading at `$0326`-`$0702` - which spans the screen, so part of the turbo
+loader travels hidden in screen memory and is copied to `$0830` before use.
+It then patches the LOAD vector at `$0330` and calls `$FFD5` as normal.
+
+Pulses, in `.tap` units of 8 cycles:
+
+| pulse | cycles | means |
+|-------|--------|-------|
+| `$24` | 288 | a 0 bit |
+| `$42` | 528 | a 1 bit |
+
+The loader arms CIA timer A with `$0368` (872 cycles) and takes an
+interrupt on each tape edge. The timer's high byte is then `$02` for a
+short pulse and `$01` for a long one, and `eor #$02 / lsr / lsr / rol $a9`
+turns that into a bit. Bits arrive most significant first.
+
+A block is:
+
+    many   $20    leader
+    one    $FF    sync
+    16 bytes      file name, padded with spaces
+    2 bytes       load address, low then high
+    2 bytes       end address, low then high
+    n bytes       the payload
+    1 byte        checksum: every payload byte exclusive-ored together
+
+The loader compares the name against the one the caller asked for and
+skips blocks that do not match, so several files sit on one side. On the
+level side the blocks are named `A` and then `A1` fourteen times.
+
+**The same format reads every release examined** - two dumps of Gauntlet
+side 1, three of side 2, a single-file Gauntlet, and both sides of Deeper
+Dungeons. Every block verifies except the first of each level side, which
+is the off-by-one below. The loader is unchanged across all of them.
+
+A block can start at any bit position, because the gaps between blocks are
+not whole numbers of bytes: the loader shifts bits through `$A9` until it
+matches, so a decoder has to search the bit stream rather than a
+byte-aligned one. Searching bytes finds only the blocks that happen to line
+up - four of fifteen on one side, the rest reading as `$10` leaders, which
+is `$20` shifted by one bit.
+
+Re-encoding a block reproduces its pulses exactly. The first
+block's header says `$2000-$2E01` for a 3,584-byte payload, one more than
+it holds - an off-by-one in the original mastering, harmless because the
+loader stops on the pointer comparison.
 
 ## Two builds
 
