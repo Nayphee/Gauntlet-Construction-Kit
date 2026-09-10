@@ -15,11 +15,10 @@ it.
 
 With that, *Gauntlet* takes its place alongside every other C64 game with
 a construction kit, and Gamebase64 can look forward to its share of levels
-consisting of one room, four hundred Deaths and an exit nobody can reach.
+consisting of one room, and hundreds of Deaths and an exit nobody can reach.
 First Star opened this door with the *Boulder Dash Construction Kit* in
 1986 and it has never been shut since. The generator in this repository is
-merely the first tool that can produce such levels at scale, unattended,
-overnight.
+merely the first tool that can produce such levels at scale, unattended.
 
 The 128 levels on the finished `gauntlet_levels.d64` were generated rather
 than designed, which makes them, in the tradition of *Gauntlet: The Deeper
@@ -35,9 +34,9 @@ detour.
 
 The rest is arithmetic. The set matches the arcade original on twenty
 counts and passes every playability check, but matching a distribution is
-not the same as designing a level, and most of these nobody sat down and
-thought about. Where a level is good it is usually because a rule happened
-to fire well, not because anyone meant it.
+not the same as designing a level with human creativity and intent, and 
+most of these nobody sat down and thought about. Where a level is good it is 
+usually because a rule happened to fire well by pure luck.
 
 Swap the finished `.d64` in at the game's press-fire prompt: the game only
 reads `LEVEL nnn` once it is running, so it takes its levels from there.
@@ -261,7 +260,8 @@ Where a reading is uncertain the documents say so rather than guessing.
 ## How this was made
 
 The disassembly, the editor, the level generator and the documentation were
-all produced with Claude Opus 5 (Anthropic), working from a disk image of
+all produced with Claude Opus 5 (Anthropic), with bug testing, validation,
+and some level design from Fable 5.1 working from a disk image of
 the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
 also the audit: a generator with no taste needs numbers to argue with.
 
