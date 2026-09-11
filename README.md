@@ -1,4 +1,4 @@
-# Gauntlet Construction Kit and level generator
+# Gauntlet Construction Kit and level generator for the Commodore 64
 
 ![The construction kit](editorscreen.png)
 
