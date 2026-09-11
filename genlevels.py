@@ -977,6 +977,7 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
     # sealed here was adding walls back.
     pockets = seal_pockets(rng, walls, start, doorcells,
                            0 if style == 'sparse'
+                           else rng.randint(0, 1) if difficulty < 0.3
                            else rng.randint(10, 18) if character in
                            ('vaults', 'trapworks')
                            else rng.randint(2, 4) if style in ('labyrinth',
@@ -1033,7 +1034,14 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
     # of the map behind a key and the level was thrown out.  Now that keys
     # are provided for whatever the doors gate, it can carry them: at 0.15
     # the set averaged 16 door cells a level against the arcade's 29.
-    if character == 'vaults':
+    if difficulty < 0.3:
+        # The arcade's introduction teaches the door with one door and one
+        # key - levels 2, 3, 4 and 8 have exactly one barrier each, so a
+        # key cannot be wasted.  This set's had three to eleven, which is
+        # not a lesson, it is a lottery.  The locked exit still makes its
+        # own barrier; almost nothing else becomes a door.
+        door_odds = 0.08
+    elif character == 'vaults':
         door_odds = 1.0                      # everything that can be a door
     elif character == 'keyring':
         door_odds = 1.0
@@ -2055,6 +2063,11 @@ def signature(rng):
         objs[c] = FOOD
     for c in pool[20:21]:
         objs[c] = CIDER
+    # and two keys with nothing on level 1 to spend them on: the bank the
+    # player carries into the doors of levels 2 to 4, exactly as the
+    # arcade's level 1 does it
+    for c in pool[21:23]:
+        objs[c] = KEY
     lower = [c for c in room if c not in objs and c[1] > 19]
     rng.shuffle(lower)
     for c in lower[:18]:
@@ -3510,6 +3523,18 @@ def top_up_keys(rng, lv, back):
         # better: carry enough that spending one on a vault is a choice
         # rather than a trap.
         want = need + rng.choice([0, 1, 2, 3, 3, 4, 5, 5, 6, 7])
+        # Exactly enough is not enough when there are other doors to waste
+        # a key on.  Level 3 shipped with two keys, two needed, and six
+        # barriers: open the wrong vault first and the exit is gone.  Give
+        # a spare for every two doors that are not on the way out, at least
+        # one whenever any such door exists.
+        stray = max(0, nbar - need)
+        if stray:
+            want = max(want, need + 1 + stray // 2)
+        else:
+            # nothing to waste a key on: exactly enough, as the arcade's
+            # introduction does it - one door, one key, no ambiguity
+            want = need
     else:
         # Nothing is compulsory here, so the keys are an allowance to spend
         # on vaults or hoard - but never more of them than there are doors.
@@ -3747,10 +3772,14 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
 
     # Keys are counted against the barriers the level actually decodes to,
     # which the generator cannot predict, so top them up and re-encode.
-    # A locked exit has already been given exactly the keys it needs, and
-    # topping that up would hand back the spare it is meant not to have.
+    # A locked exit used to be given exactly the keys it needs and skip
+    # this, so that no spare could be wasted on a vault.  That was the
+    # wrong way round: with other doors on the level a spare is what stops
+    # a wrong choice stranding the player, and level 3 shipped with two
+    # keys, two needed and six barriers.  Locked levels go through the
+    # top-up too now; it only ever adds.
     keeps_own_keys = THEMED.get(n) in (theme_alldoors, theme_keyring)
-    for _ in range(0 if (locked or n == 1 or keeps_own_keys) else 3):
+    for _ in range(0 if (n == 1 or keeps_own_keys) else 3):
         back = G.decode(data[2:])
         if not top_up_keys(rng, lv, back):
             break

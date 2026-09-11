@@ -506,6 +506,29 @@ the deepest third of the floor leaves them nowhere to go but into each
 other, so the pool is the deeper two thirds, and a cell that already has a
 generator beside it is refused. Median block is 1, worst 3.
 
+## Exactly enough keys is only enough when nothing else has a door
+
+Level 3 shipped with two keys, two needed to reach the exit, and **six
+door barriers**. Open the wrong vault first and the exit is gone. Every
+check passed it, because the checks asked whether the keys *could* reach
+the exit, not whether a reasonable player would still have them.
+
+Two rules now. Where a level has doors that are not on the way out, it
+carries a spare for every two of them and at least one — a wrong choice
+costs a key, not the level. And where nothing can be wasted, it carries
+exactly enough, which is how the arcade's introduction does it: levels 2,
+3, 4 and 8 have one barrier and one key each, so the door is taught with
+no ambiguity at all. This generator's introduction had three to eleven
+barriers, which is a lottery rather than a lesson; it now converts almost
+nothing to a door on those levels except the locked exit itself.
+
+| | arcade | before | now |
+|---|--------|--------|-----|
+| level 2 keys / barriers | 1 / 1 | 6 / 3 | 1 / 1 |
+| level 3 | 2 / 2 | 2 / 6 | 1 / 1 |
+| pool levels a wrong door strands | 0 | 40 | 0 |
+| keys a level | 4.7 | 2.9 | 4.1 |
+
 ## The introduction teaches one monster at a time
 
 The arcade's first levels carry one family each, in order:
