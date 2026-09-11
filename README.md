@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-Two things, in two places.
+![The construction kit editing level 1](editorscreen.png)
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
@@ -24,6 +24,9 @@ overnight.
 The 128 levels on the finished `gauntlet_levels.d64` were generated rather
 than designed, which makes them, in the tradition of *Gauntlet: The Deeper
 Dungeons*, something more like **Gauntlet: The Sloppier Dungeons**.
+It's far from perfect but I felt I had to ship the construction kit with
+at least something for the user to play with instead of an empty level
+disk.
 
 A couple of dozen are set pieces that were designed — the two Deaths
 levels, the vault, the hoard, the ones built out of doors, the ones that
