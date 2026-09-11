@@ -516,17 +516,28 @@ including the disk-swap messages.
 ## What the two shipped sets look like
 
 Worth knowing before using either as a reference, because they are not
-alike. Deeper Dungeons is markedly more generous than the game it expands.
+alike. Deeper Dungeons is both harder and more generous than the game it
+expands - more of what kills you, and more of what keeps you alive.
 
 | per level | arcade | Deeper Dungeons |
 |-----------|--------|-----------------|
+| Deaths | 2.0 | 5.4 |
+| levels carrying a Death | 58 | 108 |
+| traps | 0.8 | 1.8 |
+| traps in levels 1-8 | 3 | 15 |
+| teleporters | 1.2 | 2.4 |
+| monsters | 33.9 | 38.9 |
+| generators | 29.7 | 34.0 |
 | food | 5.9 | 9.0 |
 | magic | 1.2 | 3.0 |
 | treasure | 23.0 | 22.9 |
-| monsters | 33.9 | 38.9 |
-| generators | 29.7 | 34.0 |
 | door cells | 28.6 | 20.7 |
 | keys | 4.7 | 5.4 |
+
+The reviews of 1987 said it was much harder, and the table agrees: nearly
+three times the Deaths on almost every level, twice the traps, and five
+times as many traps in the opening levels. The extra food and magic are
+what make that survivable. Treasure alone is unchanged.
 
 The arcade's food sits in a tight band - 84 of its 110 pool levels carry
 between four and eight, and its correlation with the number of monsters on

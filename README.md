@@ -6,20 +6,20 @@ Two things, in two places.
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
 emulator) alongside your level disk, and it edits the levels in place. It
 would have gone down rather better in 1987, when there were people who
-wanted one. Better late than never I guess.
+wanted one. Better late than never.
 
 **The level generator runs on your computer.** It is Python, and it writes
 whole 128-level `.d64` disks (and cassette images) that the C64 then plays.
 Nothing of it goes near the C64 — it produces the disk, and the C64 reads
 it.
 
-With that, *Gauntlet* now takes its place alongside every other C64 game with
+With that, *Gauntlet* takes its place alongside every other C64 game with
 a construction kit, and Gamebase64 can look forward to its share of levels
-consisting of one room, and hundreds of Deaths, overloaded with potions,
-and an exit nobody can reach. 
+consisting of one room, four hundred Deaths and an exit nobody can reach.
 First Star opened this door with the *Boulder Dash Construction Kit* in
 1986 and it has never been shut since. The generator in this repository is
-merely the first tool that can produce such levels at scale, unattended.
+merely the first tool that can produce such levels at scale, unattended,
+overnight.
 
 The 128 levels on the finished `gauntlet_levels.d64` were generated rather
 than designed, which makes them, in the tradition of *Gauntlet: The Deeper
@@ -35,9 +35,9 @@ detour.
 
 The rest is arithmetic. The set matches the arcade original on twenty
 counts and passes every playability check, but matching a distribution is
-not the same as designing a level with human creativity and intent, and 
-most of these nobody sat down and thought about. Where a level is good it is 
-usually because a rule happened to fire well by pure luck.
+not the same as designing a level, and most of these nobody sat down and
+thought about. Where a level is good it is usually because a rule happened
+to fire well, not because anyone meant it.
 
 Swap the finished `.d64` in at the game's press-fire prompt: the game only
 reads `LEVEL nnn` once it is running, so it takes its levels from there.
@@ -72,6 +72,60 @@ between:
 
     python3 genlevels.py --seed 7 --out set7
     python3 mklevdisk.py --levels set7 --kit gauntkit.prg --out disk.d64
+
+## A little history
+
+*Gauntlet: The Deeper Dungeons* was released in 1987 by U.S. Gold in the
+UK and Europe, and by Mindscape in the United States, for the home
+computer ports of *Gauntlet* — Commodore 64, ZX Spectrum, Amstrad CPC, MSX,
+Atari ST. Gremlin Graphics developed it. It needed the original game to
+run: you loaded *Gauntlet*, then swapped in the *Deeper Dungeons* disk or
+tape at the prompt, and the game took its levels from there instead. That
+is the same trick this project uses.
+
+Many of its levels came from **a competition run across Europe**. The
+original game's instructions invited players to send in dungeons of their
+own, and ten winners each received a copy of the finished program and a
+Gauntlet T-shirt. So it was player-made content, shipped as a boxed
+product, thirty years before anyone called it that — an expansion pack
+that was also, in effect, the first *Gauntlet* level-editor competition.
+Only the winners got the editor, and they got it by post.
+
+One claim made for it does not survive a look at the disk. **"512 new
+levels"** is what every review repeated; the disk holds 128. The original
+held 128 too, and the number may come from the game mirroring and flipping
+its levels at runtime (`GAME-NOTES.md`, *The runtime mirror*), which turns
+128 maps into 512 arrangements — every one of which the original could do
+as well.
+
+The other claim holds up. Reviewers agreed the levels were **much harder**,
+and measured against the original's 128 they are:
+
+| per level | original | Deeper Dungeons |
+|-----------|----------|-----------------|
+| Deaths | 2.0 | 5.4 |
+| levels with a Death | 58 | 108 |
+| traps | 0.8 | 1.8 |
+| traps in levels 1-8 | 3 | 15 |
+| teleporters | 1.2 | 2.4 |
+| monsters | 33.9 | 38.9 |
+| generators | 29.7 | 34.0 |
+
+Nearly three times the Deaths, on almost every level. Twice the traps, and
+five times as many in the opening levels — *Your Sinclair*'s "blue flashing
+traps appear right from the beginning" is exactly right. It is also more
+generous, with half again the food and two and a half times the magic,
+which is what lets a player survive it. The program itself is the
+original's apart from fourteen bytes (`GAME-NOTES.md`, *Two builds*); all
+of the difference is in the level data.
+
+The reviews were lukewarm — "more of the same, quite a lot more in fact",
+in *Page 6*'s words — and the consensus was that it was not as good as the
+original or the newly arrived arcade *Gauntlet II*. But it was cheap, and
+*Gauntlet* players bought it anyway.
+
+Now everyone gets to make their own *Gauntlet* levels. Sorry — no free
+T-shirts.
 
 ## Which game disk to use
 
@@ -261,8 +315,7 @@ Where a reading is uncertain the documents say so rather than guessing.
 ## How this was made
 
 The disassembly, the editor, the level generator and the documentation were
-all produced with Claude Opus 5 (Anthropic), with bug testing, validation,
-and some level design from Fable 5.1 working from a disk image of
+all produced with Claude Opus 5 (Anthropic), working from a disk image of
 the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
 also the audit: a generator with no taste needs numbers to argue with.
 

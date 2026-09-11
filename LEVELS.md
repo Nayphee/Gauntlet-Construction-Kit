@@ -506,6 +506,33 @@ the deepest third of the floor leaves them nowhere to go but into each
 other, so the pool is the deeper two thirds, and a cell that already has a
 generator beside it is refused. Median block is 1, worst 3.
 
+## Levels 1 to 7 are the tutorial
+
+They are the only levels played in order, so they carry the whole
+introduction, and they teach the game's language one word at a time. Two
+rules follow from that.
+
+**Nothing hostile on the first screen.** The screen shows 16 by 10 cells
+around the player. On a tutorial level nothing that can hurt is inside
+that window when the level begins, so a new player can look at the map,
+find the joystick and read what a wall is before anything comes at them.
+The general rule keeps hostiles four steps off; this keeps the whole
+first screen quiet.
+
+**One door, one key, nothing to waste it on.** The arcade's introduction
+teaches the door with exactly that: levels 2, 3, 4 and 8 have one barrier
+and one key each. Level 1 gives two keys with nothing to spend them on —
+the bank the player carries into those doors. Side vaults and other ways
+to spend a key belong to level 8 and after, where a player can be assumed
+to have keys saved. The tutorial converts nothing to a door except the
+locked exit itself, seals no pockets, and banks nothing beyond level 1.
+
+| | arcade | this set |
+|---|--------|----------|
+| hostiles on the first screen, levels 1-7 | — | 0 on all seven |
+| keys banked by the end of level 7 | 2 | 4 |
+| barriers, levels 2-4 | 1 / 2 / 1 | 1 / 3 / 2 |
+
 ## Exactly enough keys is only enough when nothing else has a door
 
 Level 3 shipped with two keys, two needed to reach the exit, and **six

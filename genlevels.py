@@ -813,7 +813,7 @@ def want_quiet(n):
 
 
 def dungeon(rng, difficulty, want_locked=False, force=None,
-            want_sealed=False, shape=None, only_family=None):
+            want_sealed=False, shape=None, only_family=None, tutorial=False):
     """difficulty runs 0.0 (level 1) to 1.0 (level 117)."""
     walls = Walls()
     # The arcade walls the top on 127 of its levels and the left on 112,
@@ -977,7 +977,7 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
     # sealed here was adding walls back.
     pockets = seal_pockets(rng, walls, start, doorcells,
                            0 if style == 'sparse'
-                           else rng.randint(0, 1) if difficulty < 0.3
+                           else 0 if tutorial
                            else rng.randint(10, 18) if character in
                            ('vaults', 'trapworks')
                            else rng.randint(2, 4) if style in ('labyrinth',
@@ -1034,7 +1034,7 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
     # of the map behind a key and the level was thrown out.  Now that keys
     # are provided for whatever the doors gate, it can carry them: at 0.15
     # the set averaged 16 door cells a level against the arcade's 29.
-    if difficulty < 0.3:
+    if tutorial:
         # The arcade's introduction teaches the door with one door and one
         # key - levels 2, 3, 4 and 8 have exactly one barrier each, so a
         # key cannot be wasted.  This set's had three to eleven, which is
@@ -2007,7 +2007,10 @@ def signature(rng):
             and abs(c[0] - start[0]) + abs(c[1] - start[1]) > 10]
     rng.shuffle(cand)
     chosen = []
-    for _ in range(4):
+    # Two keys, and nothing on level 1 to spend them on: the bank the
+    # player carries into the single doors of levels 2 to 4, exactly as
+    # the arcade's level 1 does it.  Four was a purse, not a lesson.
+    for _ in range(2):
         if not cand:
             break
         best = max(cand, key=lambda c: min(
@@ -2063,11 +2066,6 @@ def signature(rng):
         objs[c] = FOOD
     for c in pool[20:21]:
         objs[c] = CIDER
-    # and two keys with nothing on level 1 to spend them on: the bank the
-    # player carries into the doors of levels 2 to 4, exactly as the
-    # arcade's level 1 does it
-    for c in pool[21:23]:
-        objs[c] = KEY
     lower = [c for c in room if c not in objs and c[1] > 19]
     rng.shuffle(lower)
     for c in lower[:18]:
@@ -2441,6 +2439,27 @@ def bfs(grid, start, doors_open=False, shoot=False, teleport=False,
                                 nxt.append(q)
         queue = nxt
     return dist
+
+
+def clear_start_screen(back):
+    """No monster or generator on the screen the player starts on.
+
+    The screen shows 16 by 10 cells around the player.  The general rule
+    keeps hostiles four steps from the start; on the tutorial levels the
+    whole first screen has to be quiet, so a new player can look at the
+    map, find the joystick, and read what a wall is before anything
+    comes at them.
+    """
+    at = {(c % W, c // W): k for c, k in back.objects}
+    starts = [p for p, k in at.items() if k == START]
+    if not starts:
+        return False
+    sx, sy = starts[0]
+    for (x, y), k in at.items():
+        if (0x40 <= k < 0x70 or 0x20 <= k <= 0x2E) \
+                and abs(x - sx) <= 8 and abs(y - sy) <= 5:
+            return False
+    return True
 
 
 def playable(back, treasure_room_level):
@@ -3489,7 +3508,7 @@ def spend_windfall(rng, lv, back, kind, room):
     return True
 
 
-def top_up_keys(rng, lv, back):
+def top_up_keys(rng, lv, back, n=99):
     """Set the level's keys to what the way out costs, plus a little.
 
     A key for every barrier means no decision: the player opens everything
@@ -3523,6 +3542,8 @@ def top_up_keys(rng, lv, back):
         # better: carry enough that spending one on a vault is a choice
         # rather than a trap.
         want = need + rng.choice([0, 1, 2, 3, 3, 4, 5, 5, 6, 7])
+        if n <= 7:
+            want = need                       # the tutorial banks nothing
         # Exactly enough is not enough when there are other doors to waste
         # a key on.  Level 3 shipped with two keys, two needed, and six
         # barriers: open the wrong vault first and the exit is gone.  Give
@@ -3616,7 +3637,7 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
         # make(); demanding it of the layout as well left level 3 with no
         # layout it could accept at all.
         # one family a level, in the order the arcade introduces them
-        got = dungeon(rng, 0.04 + (n - 2) * 0.12,
+        got = dungeon(rng, 0.04 + (n - 2) * 0.12, tutorial=True,
                       only_family=FAMILIES[min((n - 1) // 2,
                                                len(FAMILIES) - 1)])
     elif n in THEMED:
@@ -3781,7 +3802,7 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
     keeps_own_keys = THEMED.get(n) in (theme_alldoors, theme_keyring)
     for _ in range(0 if (n == 1 or keeps_own_keys) else 3):
         back = G.decode(data[2:])
-        if not top_up_keys(rng, lv, back):
+        if not top_up_keys(rng, lv, back, n):
             break
         # A door-heavy level can want more keys than the record has room
         # for.  Dropping the level would quietly throw away exactly the
@@ -3808,6 +3829,12 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
     # of a maze built of doors - the three devices that kept refusing to
     # appear in the set.  One rule, in one place.
     if not playable(back, 118 <= n <= 127):
+        return None
+    if n <= 7 and not clear_start_screen(back):
+        # Levels 1 to 7 are the tutorial: they teach the game's language
+        # one word at a time, and the first word must not be "you are
+        # already being attacked".  Nothing hostile on the screen the
+        # player sees when the level begins.
         return None
     return data
 
