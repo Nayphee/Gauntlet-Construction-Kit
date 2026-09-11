@@ -33,12 +33,17 @@ Every file is a PRG with load address **$0A00**. After the 2-byte load address:
 Object-section length is not stored; the loader computes it at $C665 as
 `total − veclen − 4`. Total length is 9 bits, so the ceiling is 511 bytes.
 
+Nothing in the header controls the idle behaviour - the doors that open
+themselves when nobody moves, and the walls that then become exits. That
+is a fixed countdown in the program, identical on every level; see
+`GAME-NOTES.md`, *Standing still opens the level*.
+
 ### Flags A ($0A01)
 
 | Bit | Meaning |
 |---|---|
-| 0 | Gameplay toggle, read at $989C / $AA30. **Never set in any shipped level.** |
-| 1 | Gameplay toggle, read at $98A8 / $AA24 |
+| 0 | Friendly fire: shots hurt other players. Read at $989C / $AA30, prints "SHOTS NOW HURT OTHER PLAYERS". **Never set in any shipped level.** |
+| 1 | Friendly fire: shots stun other players. Read at $98A8 / $AA24, prints "SHOTS NOW STUN OTHER PLAYERS" |
 | 2 | Teleporters live — enables the random-destination picker at $C9ED |
 | 3–5 | Wall graphic set, 0–7. Selects a 96-byte tile block copied into the charset at $8C36 |
 | 6 | Extends the playfield's right/bottom scroll limit ($87BE) |

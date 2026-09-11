@@ -1,6 +1,6 @@
-# Gauntlet Construction Kit and level generator for the Commodore 64
+# Gauntlet Construction Kit and level generator
 
-![The construction kit](editorscreen.png)
+Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
@@ -78,18 +78,36 @@ between:
 *Gauntlet: The Deeper Dungeons* was released in 1987 by U.S. Gold in the
 UK and Europe, and by Mindscape in the United States, for the home
 computer ports of *Gauntlet* — Commodore 64, ZX Spectrum, Amstrad CPC, MSX,
-Atari ST. Gremlin Graphics developed it. It needed the original game to
-run: you loaded *Gauntlet*, then swapped in the *Deeper Dungeons* disk or
-tape at the prompt, and the game took its levels from there instead. That
-is the same trick this project uses.
+Atari ST. Gremlin Graphics developed it.
+
+It is usually described as needing the original game to run, and on some
+formats it did. **The C64 disk does not.** It is a complete, standalone
+game: the same sixteen program files as the original — fourteen of them
+byte-identical, `GAUNTPROG` differing by fourteen bytes, plus a loader of
+its own — and then 128 level files in place of the originals. You boot it
+and play. Reviews of the day called it an expansion pack and priced it as
+one, but what U.S. Gold actually pressed was the whole game with new
+dungeons on it.
+
+They could have shipped it the other way. The game only reads `LEVEL nnn`
+once it is already running, so a disk holding nothing but level files can
+be swapped in at the prompt and works perfectly well — that is exactly
+what this project does, and it is what makes the expansion-pack framing
+technically sound even though the C64 release was not built that way.
+Pressing the whole game was a commercial choice, not a technical one: no
+disk-swapping at the counter, and it could be sold to somebody who had
+never owned *Gauntlet*.
 
 Many of its levels came from **a competition run across Europe**. The
 original game's instructions invited players to send in dungeons of their
-own, and ten winners each received a copy of the finished program and a
-Gauntlet T-shirt. So it was player-made content, shipped as a boxed
-product, thirty years before anyone called it that — an expansion pack
-that was also, in effect, the first *Gauntlet* level-editor competition.
-Only the winners got the editor, and they got it by post.
+own; ten winners each received a Gauntlet T-shirt and a copy of the
+finished program. So it was player-made content, pressed onto a boxed
+product and sold, thirty years before anyone called it that.
+
+How the entrants drew their dungeons is not something this project knows.
+There was no level editor on the C64 release — the disk holds the game and
+its levels and nothing else — so whatever they sent in, they sent on
+paper, or on something U.S. Gold never shipped.
 
 One claim made for it does not survive a look at the disk. **"512 new
 levels"** is what every review repeated; the disk holds 128. The original

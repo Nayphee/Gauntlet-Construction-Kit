@@ -1641,6 +1641,10 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
             gpool.remove(seed)
         gpool = [c for c in gpool if free_at(c)]
 
+    if tutorial:
+        # nothing here may introduce a family the level does not teach
+        fams = [fams[0]]
+
     if character == 'deaths' and inroom:
         # The arcade carries 2.0 Deaths a level across 58 of its 128
         # levels; this set had 0.8 across 28.  A Death cannot be killed,
@@ -1656,6 +1660,9 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
             objs[c] = 0x68 + rng.randint(0, 1)
 
     def fill_dead_space():
+        # `fams` is already the one-family list on a tutorial level, so the
+        # fill below inherits it; what it must not do is roll a tier above
+        # what the level teaches.
         """Put something wherever the map has nothing for three cells.
 
         A quarter of this generator's floor had nothing within three cells
@@ -1686,6 +1693,8 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
                 if roll < 0.55:
                     i = FAMILIES.index(rng.choice(fams))
                     code, n = 0x20 + i * 3 + rng.randint(0, tier), 1
+                elif tutorial and roll < 0.80:
+                    code, n = TREASURE, rng.randint(1, 3)
                 elif roll < 0.80:
                     code, n = TREASURE, rng.randint(1, 3)
                 elif roll < 0.94:
@@ -1717,6 +1726,13 @@ def dungeon(rng, difficulty, want_locked=False, force=None,
     want_magic = rng.choices([0, 1, 2, 3, 4, 7],
                              weights=[39, 38, 41, 6, 3, 1])[0]
     want_magic = max(0, round(want_magic * SCALE['magic']))
+    # The arcade's introduction carries four pieces of magic across levels
+    # 1 to 7, never more than one on a level.  A potion ends a fight the
+    # way food ends starvation, and a tutorial that hands out eight has
+    # taught nothing about either.  Sampling the whole set's spread gave
+    # this one exactly that.
+    if tutorial:
+        want_magic = min(want_magic, 1 if rng.random() < 0.55 else 0)
     for _ in range(want_magic):
         sprinkle(rng.choice([MAGIC_B, MAGIC_Y]), 1)
     if rng.random() < 0.25:
@@ -2052,7 +2068,13 @@ def signature(rng):
     # gold over the open floor on top of the trails and the chambers, so
     # the first thing a player saw was 62 loose coins and almost nothing
     # to shoot.
-    pool = [c for c in room if c not in objs and c[1] < 12]
+    # Clear of the start corner: the player begins at (2, 2) and the first
+    # screen has to be quiet, so nothing hostile goes within the visible
+    # 16 by 10 window.  Without this every attempt at level 1 was rejected
+    # by the "nothing within four steps of the start" rule and the whole
+    # build failed on some seeds.
+    pool = [c for c in room if c not in objs and c[1] < 12
+            and (abs(c[0] - start[0]) > 8 or abs(c[1] - start[1]) > 5)]
     rng.shuffle(pool)
     # The arcade's level 1 carries $40-$42 and nothing else: one family,
     # the weakest.  It introduces $48 on level 4 and $50 on level 5, one
@@ -3556,6 +3578,11 @@ def top_up_keys(rng, lv, back, n=99):
             # nothing to waste a key on: exactly enough, as the arcade's
             # introduction does it - one door, one key, no ambiguity
             want = need
+    elif n <= 7:
+        # A tutorial level with no locked exit gets a key per door and no
+        # purse: level 7 came out with eight keys for two doors, which
+        # teaches that keys are free.
+        want = min(nbar, 2)
     else:
         # Nothing is compulsory here, so the keys are an allowance to spend
         # on vaults or hoard - but never more of them than there are doors.
@@ -3814,10 +3841,21 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
                 data = None
             if data is not None and len(data) - 2 <= 450:
                 break
-            keys = [i for i, (_, k) in enumerate(lv.objects) if k == KEY]
-            if not keys:
+            # Shed treasure before keys.  A level at the 450-byte ceiling
+            # used to drop the spare keys it had just been given, and
+            # shipped one key short with three doors on it - the wrong
+            # choice of door then stranded the player.  Gold is the thing
+            # a level can spare; the keys are the thing it cannot.
+            spare = [i for i, (_, k) in enumerate(lv.objects)
+                     if k == TREASURE]
+            if not spare:
+                spare = [i for i, (_, k) in enumerate(lv.objects)
+                         if k in (FOOD, CIDER, MAGIC_B, MAGIC_Y)]
+            if not spare:
+                spare = [i for i, (_, k) in enumerate(lv.objects) if k == KEY]
+            if not spare:
                 return None
-            lv.objects.pop(keys[-1])
+            lv.objects.pop(spare[-1])
 
     # prove it from the encoded bytes, not from what we meant to write
     back = G.decode(data[2:])
@@ -3830,6 +3868,28 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
     # appear in the set.  One rule, in one place.
     if not playable(back, 118 <= n <= 127):
         return None
+    if n <= 7:
+        # Every late pass - the dead-space fill, the character extras, the
+        # guards - can introduce a family the level does not teach.  One
+        # stray $48 on level 1 and a pair of Deaths on level 7 got through
+        # that way.  Rather than gate each pass, fold the strays back into
+        # the family this level is for, once, at the end.
+        want_fam = FAMILIES[min((n - 1) // 2, len(FAMILIES) - 1)]
+        fixed = []
+        for c, k in lv.objects:
+            if 0x40 <= k < 0x70 and (k & 0xF8) != want_fam:
+                k = want_fam + (k & 0x07 if (k & 0x07) < 2 else 1)
+            fixed.append((c, k))
+        if fixed != lv.objects:
+            lv.objects = fixed
+            try:
+                data = G.encode(lv)
+            except ValueError:
+                return None
+            if len(data) - 2 > 450:
+                return None
+            back = G.decode(data[2:])
+
     if n <= 7 and not clear_start_screen(back):
         # Levels 1 to 7 are the tutorial: they teach the game's language
         # one word at a time, and the first word must not be "you are

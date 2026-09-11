@@ -519,6 +519,13 @@ find the joystick and read what a wall is before anything comes at them.
 The general rule keeps hostiles four steps off; this keeps the whole
 first screen quiet.
 
+**One potion at most.** The arcade's introduction carries four pieces of
+magic across levels 1 to 7 and never more than one on a level. A potion
+ends a fight the way food ends starvation, and a tutorial that hands out
+eight of them has taught nothing about either. Sampling the whole set's
+spread gave this one exactly that — eight on level 4 — because the
+distribution is right for the pool and wrong for a lesson.
+
 **One door, one key, nothing to waste it on.** The arcade's introduction
 teaches the door with exactly that: levels 2, 3, 4 and 8 have one barrier
 and one key each. Level 1 gives two keys with nothing to spend them on —
@@ -532,6 +539,15 @@ locked exit itself, seals no pockets, and banks nothing beyond level 1.
 | hostiles on the first screen, levels 1-7 | — | 0 on all seven |
 | keys banked by the end of level 7 | 2 | 4 |
 | barriers, levels 2-4 | 1 / 2 / 1 | 1 / 3 / 2 |
+
+## Shed gold, never keys
+
+A level that comes out over the 450-byte ceiling has to lose something.
+It used to lose keys, because keys were the easiest thing to drop — which
+meant a door-heavy level at the ceiling shipped one key short of what its
+own rule had just decided it needed, and the wrong choice of door stranded
+the player. Treasure goes first now, then food and magic, and keys only if
+nothing else is left.
 
 ## Exactly enough keys is only enough when nothing else has a door
 

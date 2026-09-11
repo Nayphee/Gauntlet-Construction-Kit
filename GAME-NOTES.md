@@ -33,6 +33,13 @@ The findings here are from releases that hold their levels as 128 separate
 `LEVEL nnn` files, and from two builds of `GAUNTPROG` that differ by
 fourteen bytes.
 
+**Deeper Dungeons on the C64 is a standalone game, not an overlay.** Its
+disk carries the same sixteen program files as the original - fourteen
+byte-identical, `GAUNTPROG` differing by those fourteen bytes, plus its own
+593-byte `GAUNTLET DD` loader - and 128 level files. Nothing about it
+requires the original disk to be present. (Other formats and other
+countries may differ; this is what the C64 disk holds.)
+
 Other releases pack the levels into batches. One examined here holds them
 in fifteen files named `A` to `O`, all loading at `$2000`, with `A` holding
 seven levels and the rest ten apiece in fixed 512-byte slots - 147 slots
@@ -247,6 +254,57 @@ A wall re-orients to the heading it is drawn along, so the pen chooses the
 kind of tile and the direction chooses which of the pair. For a run of one
 cell there is no direction, so the pen alone decides: `$40` gives an upright
 door, `$80` a flat one.
+
+## Standing still opens the level
+
+The arcade's anti-stall behaviour is here too, and it is not in the level
+data at all - it is a countdown in the program, the same on every level.
+
+`$B43F` counts down; `$B43E` is which stage the level has reached. The
+tick is `$B33B`, called once a frame from the main loop at `$81D0`:
+
+```asm
+$B33B  dec $ab8a        ; a frame divider
+$B33E  bpl $b364
+$B340  lda #$0b
+$B342  sta $ab8a        ; reload - so the countdown steps every 12 frames
+$B345  lda $b43e        ; which stage are we at?
+$B348  bne $b358
+$B34A  dec $b43f        ; stage 0: still counting down
+$B34D  bne $b364
+$B34F  lda $b441        ; run out -> reload with the second delay
+$B352  sta $b43f
+$B355  jmp $b365        ; ...and open the doors
+```
+
+**Stage one, `$B365`:** sweeps the map replacing every tile in the range
+`$11` to `$13` with `$00`. That is both door tiles and the key tile - so
+**every door on the level opens at once**, and the loose keys vanish with
+them. `$B43E` is incremented, and the countdown reloads from `$B441`.
+
+**Stage two, `$B380`:** after the second delay, sweeps the range `$01` to
+`$11` and replaces it with `$36`. Every wall on the level - the whole
+range of wall tiles - **becomes an exit**. Wherever the player is standing,
+a way out is now adjacent.
+
+The constants sit together at `$B440`:
+
+| | value | ticks | frames | about |
+|---|-------|-------|--------|-------|
+| `$B440` | `$1E` | 30 | 360 | 7 seconds (PAL) - the first delay |
+| `$B441` | `$32` | 50 | 600 | 12 seconds - the second |
+
+`$8245`/`$824B` reset the stage to 0 and the countdown to `$B440` when a
+level starts. Anything the player does resets it again: the shot routine
+ends `lda $b43e / lda $b440,y / sta $b43f` at `$A511`, reloading the
+countdown with the delay for the *current* stage, so an active player
+never reaches it.
+
+Two consequences for level design. A level cannot opt out, adjust the
+delay, or have longer doors - there is nothing in the format for it, and
+the routine reads no level data. And a level whose exit is locked behind
+doors is never truly unsolvable through inactivity: wait long enough and
+the doors open themselves, wait longer and the walls do.
 
 ### Trap-walls
 
