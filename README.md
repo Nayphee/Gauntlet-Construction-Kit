@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-Two things, in two places.
+![The construction kit](editorscreen.png)
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
