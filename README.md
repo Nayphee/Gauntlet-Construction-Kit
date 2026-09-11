@@ -6,16 +6,17 @@ Two things, in two places.
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
 emulator) alongside your level disk, and it edits the levels in place. It
 would have gone down rather better in 1987, when there were people who
-wanted one. Better late than never.
+wanted one. Better late than never I guess.
 
 **The level generator runs on your computer.** It is Python, and it writes
 whole 128-level `.d64` disks (and cassette images) that the C64 then plays.
 Nothing of it goes near the C64 — it produces the disk, and the C64 reads
 it.
 
-With that, *Gauntlet* takes its place alongside every other C64 game with
+With that, *Gauntlet* now takes its place alongside every other C64 game with
 a construction kit, and Gamebase64 can look forward to its share of levels
-consisting of one room, and hundreds of Deaths and an exit nobody can reach.
+consisting of one room, and hundreds of Deaths, overloaded with potions,
+and an exit nobody can reach. 
 First Star opened this door with the *Boulder Dash Construction Kit* in
 1986 and it has never been shut since. The generator in this repository is
 merely the first tool that can produce such levels at scale, unattended.
