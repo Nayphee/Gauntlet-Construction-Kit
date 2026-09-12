@@ -43,8 +43,8 @@ is a fixed countdown in the program, identical on every level; see
 | Bit | Meaning |
 |---|---|
 | 0 | Friendly fire: shots hurt other players. Read at $989C / $AA30, prints "SHOTS NOW HURT OTHER PLAYERS". **Never set in any shipped level.** |
-| 1 | Friendly fire: shots stun other players. Read at $98A8 / $AA24, prints "SHOTS NOW STUN OTHER PLAYERS" |
-| 2 | Teleporters live — enables the random-destination picker at $C9ED |
+| 1 | Friendly fire: shots stun other players. Read at $98A8 / $AA24, prints "SHOTS NOW STUN OTHER PLAYERS". **Both bits may be set at once**: $AA24 applies the stun and falls through to $AA30, which applies the damage, and both messages print. The arcade sets neither on any level |
+| 2 | **One exit at random.** `$C9ED` scans the map for exit tiles (`$36`), counts them, and erases all but one — chosen from the CIA timers at level start. A level with several exits drawn on it therefore shows only one, and a different one each time it is played. Set on 33 arcade levels, 31 of which carry more than one exit tile. Nothing to do with teleporters, despite the routine sitting beside them |
 | 3–5 | Wall graphic set, 0–7. Selects a 96-byte tile block copied into the charset at $8C36 |
 | 6 | Extends the playfield's right/bottom scroll limit ($87BE) |
 | 7 | Extends the left/top limit ($87BC) **and** suppresses the default left border column |

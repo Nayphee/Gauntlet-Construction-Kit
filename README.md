@@ -1,8 +1,5 @@
 # Gauntlet Construction Kit and level generator
 
-
-![Commodore 64 Editor](editorscreen.png)
-
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -335,7 +332,7 @@ step it:
 |---------|--------------|
 | wall graphic | which of eight tile sets the walls are drawn from |
 | wall colour | which of eight colours they use |
-| shots | normal, or shots hurt / stun other players |
+| shots | normal, hurt, stun, or both — the game applies the two independently |
 | one exit only | keep one exit at random and erase the others |
 | scroll limits | `none`, `horiz`, `vert` or `both` |
 
@@ -383,13 +380,13 @@ expands - roughly twice the food and three times the magic.
 
 | per level | arcade | this set |
 |-----------|--------|----------|
-| food | 5.9 | 6.0 |
-| magic | 1.2 | 1.1 |
-| treasure | 23.0 | 27.9 |
-| monsters | 33.9 | 35.7 |
-| generators | 29.7 | 28.9 |
-| keys | 4.7 | 3.9 |
-| dead ends | 17.5 | 15.5 |
+| food | 5.9 | 6.2 |
+| magic | 1.2 | 1.4 |
+| treasure | 23.0 | 25.6 |
+| monsters | 33.9 | 34.6 |
+| generators | 29.7 | 29.1 |
+| keys | 4.7 | 3.6 |
+| dead ends | 17.5 | 12.7 |
 | walk to the exit | 68 steps | 57 |
 
 Measured on the shipped `gauntlet_levels.d64` with `audit.py`. Where the

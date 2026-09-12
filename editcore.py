@@ -251,12 +251,14 @@ class Editor:
         'scroll':    (1, 6, 2),    # bits 6 and 7 together: none/wide/tall/both
     }
 
-    SHOTS = ['normal', 'hurt others', 'stun others', 'hurt + stun']
+    # bit 0 hurts, bit 1 stuns, and the game applies both when both are
+    # set: $AA24 stuns and falls through to $AA30, which does the damage
+    SHOTS = ['normal', 'hurt', 'stun', 'both']
 
     # Bit 6 extends the right/bottom scroll limit and bit 7 the left/top,
     # and they sit next to each other, so they read better as one setting
     # with four states than as two switches.
-    SCROLL = ['none', 'wide', 'tall', 'both']
+    SCROLL = ['none', 'horiz', 'vert', 'both']
 
     def get(self, field):
         byte, shift, width = self.FIELDS[field]

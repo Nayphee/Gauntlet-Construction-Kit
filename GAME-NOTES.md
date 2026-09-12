@@ -430,6 +430,15 @@ those, which is why its graphics key stops at 2 and its colour key at 6.
 
 ## Friendly fire
 
+Bit 0 of the level's first flag byte makes shots hurt other players, bit
+1 makes them stun. **The game applies both bits at once**: `$AA24` tests
+the stun bit and sets the hit player's state to 5, then falls through to
+`$AA30`, which tests the hurt bit and applies the damage from `$AA95,x`.
+Neither excludes the other, and at level start both messages print in
+sequence from `$989C` and `$98A8`. So a level may be normal, hurt, stun or
+both, and the construction kit's `F` key steps through all four.
+
+
 Bits 0 and 1 of flags A say what one player's shot does to the other: bit 0
 hurts, bit 1 stuns, neither is harmless.
 
