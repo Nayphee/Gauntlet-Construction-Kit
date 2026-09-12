@@ -74,8 +74,8 @@ class App:
         self.pal = tk.Frame(side, bg='#101010')
         self.pal.pack(fill='x')
         self.swatch = {}
-        for i, (code, name, colour) in enumerate(E.PALETTE):
-            b = tk.Label(self.pal, text='%-13s' % name, bg=colour,
+        for i, (code, name, colour, glyph) in enumerate(E.PALETTE):
+            b = tk.Label(self.pal, text='%s %-13s' % (glyph, name), bg=colour,
                          fg=self._ink(colour), font=('TkFixedFont', 9),
                          anchor='w', padx=4)
             b.grid(row=i % 15, column=i // 15, sticky='ew', pady=1, padx=1)
@@ -96,12 +96,19 @@ class App:
         self.canvas.bind('<Motion>', self.hover)
         root.bind('<Key>', self.key)
 
+        # Two items a cell: the square, and a character on top of it.
+        # Colour alone gave 37 shades that nobody could tell apart.
         self.cells = [[None] * E.W for _ in range(E.H)]
+        self.marks = [[None] * E.W for _ in range(E.H)]
         for y in range(E.H):
             for x in range(E.W):
                 self.cells[y][x] = self.canvas.create_rectangle(
                     x * CELL, y * CELL, x * CELL + CELL, y * CELL + CELL,
                     outline='#181818', fill='#202020')
+                self.marks[y][x] = self.canvas.create_text(
+                    x * CELL + CELL // 2, y * CELL + CELL // 2,
+                    text='', font=('TkFixedFont', max(8, CELL - 8), 'bold'),
+                    fill='#000000')
         self.load(0)
 
     # -- helpers -----------------------------------------------------------
@@ -112,13 +119,15 @@ class App:
 
     @staticmethod
     def colour(code):
-        for c, _, col in E.PALETTE:
+        for c, _, col, _ in E.PALETTE:
             if c == code:
                 return col
         if 0x40 <= code < 0x70:
             return App.colour(code & 0xF8)
         if 0x20 <= code <= 0x2E:
             return App.colour(0x20 + (code - 0x20) // 3 * 3)
+        if code in E.GEN_CODES:
+            return '#404040'
         if 0 < code < 0x13:
             return '#9a9a9a'
         return '#303030'
@@ -129,11 +138,17 @@ class App:
         self.ed = E.Editor(self.store, self.nums[self.idx])
         self.redraw()
 
+    def draw_cell(self, x, y):
+        code = self.ed.at(x, y)
+        bg = self.colour(code)
+        self.canvas.itemconfig(self.cells[y][x], fill=bg)
+        self.canvas.itemconfig(self.marks[y][x],
+                               text=E.tile_glyph(code), fill=self._ink(bg))
+
     def redraw(self):
         for y in range(E.H):
             for x in range(E.W):
-                self.canvas.itemconfig(self.cells[y][x],
-                                       fill=self.colour(self.ed.at(x, y)))
+                self.draw_cell(x, y)
         self.status()
 
     def status(self):
@@ -148,11 +163,11 @@ class App:
             'monst   %-4d gens   %d\n'
             'gold    %-4d food   %d\n'
             'keys    %-4d magic  %d\n'
-            'pen     %s'
+            'pen     %s %s'
             % ('%d' % sz if sz is not None else '--', E.MAX_RECORD,
                c['walls'], c['doors'], c['monsters'], c['generators'],
                c['treasure'], c['food'], c['keys'], c['magic'],
-               E.tile_name(self.code))))
+               E.tile_glyph(self.code), E.tile_name(self.code))))
         self.warn.config(text='\n'.join(self.ed.warnings()))
         for code, b in self.swatch.items():
             b.config(relief='solid' if code == self.code else 'flat',
@@ -179,8 +194,7 @@ class App:
 
     def put(self, x, y):
         if self.ed.paint(x, y, self.code):
-            self.canvas.itemconfig(self.cells[y][x],
-                                   fill=self.colour(self.ed.at(x, y)))
+            self.draw_cell(x, y)
             self.status()
 
     def pickup(self, ev):

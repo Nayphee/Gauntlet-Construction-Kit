@@ -22,50 +22,71 @@ SAFE_RECORD = 450          # what the game's own sets stay under
 
 
 # What the palette offers.  Each entry is (code, name, colour); the colour
-# is advisory, for whatever draws this.  $32 is deliberately absent: it has
+# is advisory, for whatever draws this, and the glyph is what gets printed
+# in the cell - colour alone made a map of 37 shades that nobody could
+# read.  $32 is deliberately absent: it has
 # a graphic but no step handler, so it behaves as a wall nothing can pass,
 # shoot or collect - the C64 kit leaves it out for the same reason.
 PALETTE = [
-    (0x00, 'floor',        '#202020'),
-    (0x10, 'wall',         '#9a9a9a'),
-    (0x11, 'door up',      '#6ad2c8'),
-    (0x12, 'door across',  '#6ad2c8'),
-    (0x33, 'breakable',    '#7a6a4a'),
-    (0x90, 'trap-wall',    '#b06a30'),
-    (0x13, 'treasure',     '#d08a20'),
-    (0x14, 'cider',        '#c04040'),
-    (0x15, 'food',         '#c04040'),
-    (0x16, 'magic blue',   '#5060d0'),
-    (0x17, 'magic yellow', '#d0c040'),
-    (0x18, 'amulet',       '#b060c0'),
-    (0x1F, 'key',          '#d0d0d0'),
-    (0x31, 'poison',       '#508050'),
-    (0x19, 'pot: armour',  '#8060a0'),
-    (0x1A, 'pot: carry',   '#8060a0'),
-    (0x1B, 'pot: magic',   '#8060a0'),
-    (0x1C, 'pot: shot pwr', '#8060a0'),
-    (0x1D, 'pot: shot spd', '#8060a0'),
-    (0x1E, 'pot: fight',   '#8060a0'),
-    (0x2F, 'trap',         '#e04020'),
-    (0x30, 'teleporter',   '#40c040'),
-    (0x36, 'exit',         '#ffffff'),
-    (0x37, 'exit to 4',    '#ffffff'),
-    (0x38, 'exit to 8',    '#ffffff'),
-    (0x3F, 'start',        '#ffff40'),
-    (0x40, 'ghost',        '#b0b0f0'),
-    (0x48, 'grunt',        '#f0b0b0'),
-    (0x50, 'demon',        '#f08040'),
-    (0x58, 'lobber',       '#a0f0a0'),
-    (0x60, 'sorcerer',     '#d0a0f0'),
-    (0x68, 'Death',        '#f04040'),
-    (0x20, 'gen: ghost',   '#7070a0'),
-    (0x23, 'gen: grunt',   '#a07070'),
-    (0x26, 'gen: demon',   '#a06030'),
-    (0x29, 'gen: lobber',  '#60a060'),
-    (0x2C, 'gen: sorcerer', '#9070a0'),
+    (0x00, 'floor',         '#202020', ' '),
+    (0x10, 'wall',          '#9a9a9a', '#'),
+    (0x11, 'door up',       '#6ad2c8', '|'),
+    (0x12, 'door across',   '#6ad2c8', '='),
+    (0x33, 'breakable',     '#7a6a4a', '%'),
+    (0x90, 'trap-wall',     '#b06a30', '!'),
+    (0x2F, 'trap',          '#e04020', 'T'),
+    (0x13, 'treasure',      '#d08a20', '$'),
+    (0x14, 'cider',         '#c04040', 'c'),
+    (0x15, 'food',          '#c04040', 'f'),
+    (0x16, 'magic blue',    '#5060d0', 'm'),
+    (0x17, 'magic yellow',  '#d0c040', 'm'),
+    (0x18, 'amulet',        '#b060c0', 'A'),
+    (0x31, 'poison',        '#508050', 'p'),
+    (0x1F, 'key',           '#d0d0d0', 'k'),
+    (0x30, 'teleporter',    '#40c040', 'O'),
+    (0x36, 'exit',          '#ffffff', 'X'),
+    (0x37, 'exit to 4',     '#ffffff', '4'),
+    (0x38, 'exit to 8',     '#ffffff', '8'),
+    (0x3F, 'start',         '#ffff40', '@'),
+    (0x40, 'ghost',         '#b0b0f0', 'g'),
+    (0x48, 'grunt',         '#f0b0b0', 'G'),
+    (0x50, 'demon',         '#f08040', 'D'),
+    (0x58, 'lobber',        '#a0f0a0', 'L'),
+    (0x60, 'sorcerer',      '#d0a0f0', 'S'),
+    (0x68, 'Death',         '#f04040', '+'),
+    (0x20, 'gen: ghost',    '#7070a0', 'g'),
+    (0x23, 'gen: grunt',    '#a07070', 'G'),
+    (0x26, 'gen: demon',    '#a06030', 'D'),
+    (0x29, 'gen: lobber',   '#60a060', 'L'),
+    (0x2C, 'gen: sorcerer', '#9070a0', 'S'),
+    (0x19, 'pot: armour',   '#8060a0', 'a'),
+    (0x1A, 'pot: carry',    '#8060a0', 'a'),
+    (0x1B, 'pot: magic',    '#8060a0', 'a'),
+    (0x1C, 'pot: shot pwr', '#8060a0', 'a'),
+    (0x1D, 'pot: shot spd', '#8060a0', 'a'),
+    (0x1E, 'pot: fight',    '#8060a0', 'a'),
 ]
 
-NAME = {c: n for c, n, _ in PALETTE}
+# A generator draws its family's letter on a dark square; a live monster
+# draws the same letter on a light one, so the two read apart at a glance
+# without needing two alphabets.
+GEN_CODES = set(range(0x20, 0x2F))
+
+NAME = {c: n for c, n, _, _ in PALETTE}
+GLYPH = {c: g for c, _, _, g in PALETTE}
+
+
+def tile_glyph(code):
+    """The character to print in a cell."""
+    if code in GLYPH:
+        return GLYPH[code]
+    if 0x40 <= code < 0x70:                 # a tier within a family
+        return GLYPH.get(code & 0xF8, '?')
+    if 0x20 <= code <= 0x2E:                # a generator tier
+        return GLYPH.get(0x20 + (code - 0x20) // 3 * 3, 'o')
+    if 0 < code < 0x13:                     # the other wall tiles
+        return '#'
+    return '?' 
 
 
 def tile_name(code):

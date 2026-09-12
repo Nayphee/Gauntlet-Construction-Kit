@@ -1,13 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![The construction kit editing](editorscreen.png)
-
-Two things: 
-1) a Commodore 64 Gauntlet level construction kit that runs on a Commodore 64 on a
-   disk with new pre-generated levels.
-2) a series of python scripts to automatically generate the levels, an editor
-   to manually edit them, and a series of tools to master them to d64 or
-   tap (C64 disk or tape respectively)
+Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
@@ -305,7 +298,22 @@ table) with the simulator in `tools/`.
     python3 gauntkit-pc.py levels/
 
 It shows the **whole 32 by 32 map at once**, which the C64 kit cannot —
-that one scrolls a 16 by 10 window. Click to paint, right-click to pick up
+that one scrolls a 16 by 10 window. Every cell prints a character as well
+as a colour, because thirty-seven shades of block are not a map:
+
+```
+#   A           #   #      ####G      #  wall        $  treasure
+#ck             #$G ###      #        |= door        k  key
+#        @      #$  #####      #      @  start       X  exit
+#               #   ##### # ###G      g  ghost       G  grunt
+#GG         fG###   #G#  #  #  #      D  demon       L  lobber
+#$#  G G    GGG$#   ##    X#          S  sorcerer    +  Death
+#$#    m  GGGGGG|   #G ####  #        T  trap        !  trap-wall
+```
+
+A generator prints its family's letter on a dark square and a live monster
+the same letter on a light one, so the two read apart without needing two
+alphabets. Click to paint, right-click to pick up
 the tile under the cursor, `[` and `]` to change level, `s` to save, `w` to
 write every level out to a directory. The byte count and the warnings are
 the same ones the C64 panel shows, because a level still has to fit in 511
