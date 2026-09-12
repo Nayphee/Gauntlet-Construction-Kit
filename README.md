@@ -7,7 +7,7 @@ Two things:
    disk with new pre-generated levels.
 2) a series of python scripts to automatically generate the levels, an editor
    to manually edit them, and a series of tools to master them to d64 or
-   tap (C64 dis or tape respectively)
+   tap (C64 disk or tape respectively)
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
