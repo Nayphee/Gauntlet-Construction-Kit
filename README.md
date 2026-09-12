@@ -1,7 +1,5 @@
 # Gauntlet Construction Kit and level generator
 
-![Editing the first level](editorscreen.png)
-
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -201,6 +199,15 @@ This is the C64 half: `gauntkit.prg` loads with `LOAD"*",8` and runs with
 BASIC stub, and edits any level file on a Gauntlet or Deeper Dungeons disk
 that stores them as separate `LEVEL nnn` files. Press `?` for the key list.
 
+Two keys reach settings the kit could not touch before. **`E`** turns
+*one exit only* on and off — the game then keeps one exit tile and erases
+the rest, picked afresh each play. **`W`** steps the scroll limits through
+`NONE`, `HORIZ`, `VERT` and `BOTH`: they are two adjacent bits, so they
+read better as one setting with four states than as two switches. The
+panel spells both out — `EXITS: NORMAL` or `RANDOM`, `SCROLL: HORIZ` and
+so on — rather than abbreviating them to letters. Both editors offer the
+same settings, so a level can be given them on either machine.
+
 The panel shows the byte cost of the level as you work: the format allows
 511 bytes and a level that will not fit cannot be saved, so the count
 matters. It warns about a missing start or exit, but never refuses a level
@@ -315,7 +322,29 @@ as a colour, because thirty-seven shades of block are not a map:
 
 A generator prints its family's letter on a dark square and a live monster
 the same letter on a light one, so the two read apart without needing two
-alphabets. Click to paint, right-click to pick up
+alphabets.
+
+Not everything about a level is in the map. The **level settings** panel
+holds what the C64 kit shows as GFX, COL and SHOTS — click any of them to
+step it:
+
+| setting | what it does |
+|---------|--------------|
+| wall graphic | which of eight tile sets the walls are drawn from |
+| wall colour | which of eight colours they use |
+| shots | normal, or shots hurt / stun other players |
+| one exit only | keep one exit at random and erase the others |
+| scroll limits | `none`, `horiz`, `vert` or `both` |
+
+These live in the two flag bytes of the header rather than the map, which
+is why changing them never alters a single cell.
+
+These last two are **new to the C64 construction kit** as well, which shows GFX,
+COL and SHOTS and leaves the rest alone (its `TR` and `TW` lines are trap
+and trap-wall counts, not settings). They are real level features — the
+arcade sets *one exit only* on 33 of its levels — so the PC editor offers
+them. A level edited on the C64 keeps whatever it already had: the save
+path preserves both flag bytes untouched. Click to paint, right-click to pick up
 the tile under the cursor, `[` and `]` to change level, `s` to save, `w` to
 write every level out to a directory. The byte count and the warnings are
 the same ones the C64 panel shows, because a level still has to fit in 511
@@ -352,13 +381,13 @@ expands - roughly twice the food and three times the magic.
 | per level | arcade | this set |
 |-----------|--------|----------|
 | food | 5.9 | 6.0 |
-| magic | 1.2 | 1.2 |
-| treasure | 23.0 | 27.5 |
-| monsters | 33.9 | 38.6 |
-| generators | 29.7 | 28.6 |
-| dead ends | 17.5 | 15.4 |
-| keys | 4.7 | 2.9 |
-| walk to the exit | 68 steps | 56 |
+| magic | 1.2 | 1.1 |
+| treasure | 23.0 | 27.9 |
+| monsters | 33.9 | 35.7 |
+| generators | 29.7 | 28.9 |
+| keys | 4.7 | 3.9 |
+| dead ends | 17.5 | 15.5 |
+| walk to the exit | 68 steps | 57 |
 
 Measured on the shipped `gauntlet_levels.d64` with `audit.py`. Where the
 set still falls short — keys, and the shape of the maps, which are more
@@ -368,7 +397,7 @@ open than the original's — `LEVELS.md` says so.
 
 | file | what is in it |
 |------|--------------|
-| `GAME-NOTES.md` | what the game does with a level: the exit redirect, the runtime mirror, trap-walls, teleporter range, the wall tables, where the hidden potion comes from, the turbo tape format, and how the shipped builds differ |
+| `GAME-NOTES.md` | what the game does with a level: the exit redirect, the runtime mirror, trap-walls, the on-screen teleporter rule, the wall tables, one exit chosen at random, the idle countdown that opens doors and turns walls to exits, the treasure-room timer, the hidden potion, the turbo tape format, and how the shipped builds differ |
 | `gauntlet_dd_level_format.md` | the `LEVEL nnn` file format: container, vector section, object section, and the disambiguation rule an editor has to obey |
 | `object-codes.md` | every object code, what it does, and how confident the reading is |
 | `LEVELS.md` | the design rules this generator follows, and where the set still differs from the arcade |

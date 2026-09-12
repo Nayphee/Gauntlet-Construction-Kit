@@ -201,6 +201,7 @@ class Editor:
         self.n = n
         self.lv = store.level(n)
         self.original = bytes(self.lv.grid)
+        self.orig_flags = (self.lv.flags1, self.lv.flags2)
         self.undo = []
         self.dirty = False
 
@@ -230,8 +231,71 @@ class Editor:
 
     def revert(self):
         self.lv.grid[:] = bytearray(self.original)
+        self.lv.flags1, self.lv.flags2 = self.orig_flags
         self.undo.clear()
         self.dirty = False
+
+    # -- the header flags --------------------------------------------------
+    #
+    # Not everything about a level is in the grid.  The wall graphic set,
+    # the wall colour, the friendly-fire mode and the teleporter and scroll
+    # switches all live in the two flag bytes, which is what the C64 kit's
+    # GFX, COL and SHOTS lines show.  save_patched carries them through
+    # untouched, so editing them here is just a matter of setting the bits.
+
+    FIELDS = {                     # name: (which byte, shift, width)
+        'gfx':       (1, 3, 3),    # wall graphic set, 0-7
+        'colour':    (2, 3, 3),    # wall colour, 0-7
+        'shots':     (1, 0, 2),    # 0 none, 1 hurt, 2 stun
+        'randexit':  (1, 2, 1),    # keep one exit at random, erase the rest
+        'scroll':    (1, 6, 2),    # bits 6 and 7 together: none/wide/tall/both
+    }
+
+    SHOTS = ['normal', 'hurt others', 'stun others', 'hurt + stun']
+
+    # Bit 6 extends the right/bottom scroll limit and bit 7 the left/top,
+    # and they sit next to each other, so they read better as one setting
+    # with four states than as two switches.
+    SCROLL = ['none', 'wide', 'tall', 'both']
+
+    def get(self, field):
+        byte, shift, width = self.FIELDS[field]
+        v = self.lv.flags1 if byte == 1 else self.lv.flags2
+        return (v >> shift) & ((1 << width) - 1)
+
+    def set(self, field, value):
+        """Set a flag field.  Changing the scroll limits also moves the
+        map's left column, because bit 7 suppresses the border the vector
+        section draws there: leave the grid as it was and the level can
+        never be saved again, since the save would have to re-add 32 wall
+        cells that the header says are not there."""
+        byte, shift, width = self.FIELDS[field]
+        mask = ((1 << width) - 1) << shift
+        value = int(value) & ((1 << width) - 1)
+        cur = self.lv.flags1 if byte == 1 else self.lv.flags2
+        new = (cur & ~mask) | (value << shift)
+        if new == cur:
+            return False
+        before = G.vector_only_grid(self.lv)
+        if byte == 1:
+            self.lv.flags1 = new
+        else:
+            self.lv.flags2 = new
+        after = G.vector_only_grid(self.lv)
+        for i in range(W * H):
+            if before[i] != after[i] and self.lv.grid[i] == before[i]:
+                # the cell was whatever the header used to draw there, so
+                # it follows the header rather than becoming an edit
+                self.undo.append((i, self.lv.grid[i]))
+                self.lv.grid[i] = after[i]
+        self.dirty = True
+        return True
+
+    def cycle(self, field):
+        """Step a field to its next value and wrap."""
+        _, _, width = self.FIELDS[field]
+        self.set(field, (self.get(field) + 1) % (1 << width))
+        return self.get(field)
 
     # -- measuring ---------------------------------------------------------
     def size(self):
@@ -292,6 +356,7 @@ class Editor:
                              % (len(body), MAX_RECORD))
         self.store.put(self.n, body)
         self.original = bytes(self.lv.grid)
+        self.orig_flags = (self.lv.flags1, self.lv.flags2)
         self.undo.clear()
         self.dirty = False
         return len(body)

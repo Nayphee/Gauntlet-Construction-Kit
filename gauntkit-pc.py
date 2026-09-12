@@ -69,6 +69,27 @@ class App:
                              anchor='w', wraplength=230)
         self.warn.pack(fill='x', pady=(0, 8))
 
+        # The header flags - the C64 kit's GFX, COL and SHOTS lines.  Not
+        # everything about a level is in the grid.
+        tk.Label(side, text='level settings', font=('TkFixedFont', 10),
+                 bg='#101010', fg='#707070', anchor='w').pack(fill='x')
+        self.flagbox = tk.Frame(side, bg='#101010')
+        self.flagbox.pack(fill='x', pady=(0, 8))
+        self.flaglab = {}
+        for i, (field, label) in enumerate(
+                (('gfx', 'wall graphic'), ('colour', 'wall colour'),
+                 ('shots', 'shots'), ('randexit', 'one exit only'),
+                 ('scroll', 'scroll limits'))):
+            tk.Label(self.flagbox, text=label, font=('TkFixedFont', 9),
+                     bg='#101010', fg='#909090', anchor='w'
+                     ).grid(row=i, column=0, sticky='w')
+            b = tk.Label(self.flagbox, text='', font=('TkFixedFont', 9),
+                         bg='#282828', fg='#e0e0e0', anchor='w', padx=6,
+                         width=12)
+            b.grid(row=i, column=1, sticky='ew', padx=(6, 0), pady=1)
+            b.bind('<Button-1>', lambda e, f=field: self.bump(f))
+            self.flaglab[field] = b
+
         tk.Label(side, text='palette', font=('TkFixedFont', 10),
                  bg='#101010', fg='#707070', anchor='w').pack(fill='x')
         self.pal = tk.Frame(side, bg='#101010')
@@ -84,7 +105,8 @@ class App:
 
         tk.Label(side, text=('click paint  right-click pick\n'
                              'u undo   s save   r revert\n'
-                             '[ ] level   w write all'),
+                             '[ ] level   w write all\n'
+                             'click a setting to change it'),
                  font=('TkFixedFont', 9), justify='left',
                  bg='#101010', fg='#606060', anchor='w').pack(fill='x',
                                                               pady=(8, 0))
@@ -169,11 +191,27 @@ class App:
                c['treasure'], c['food'], c['keys'], c['magic'],
                E.tile_glyph(self.code), E.tile_name(self.code))))
         self.warn.config(text='\n'.join(self.ed.warnings()))
+        for field, b in self.flaglab.items():
+            v = self.ed.get(field)
+            if field == 'shots':
+                txt = E.Editor.SHOTS[v]
+            elif field == 'scroll':
+                txt = E.Editor.SCROLL[v]
+            elif field == 'randexit':
+                txt = 'on' if v else 'off'
+            else:
+                txt = str(v)
+            b.config(text=txt)
         for code, b in self.swatch.items():
             b.config(relief='solid' if code == self.code else 'flat',
                      bd=2 if code == self.code else 0)
 
     # -- input -------------------------------------------------------------
+    def bump(self, field):
+        """Click a setting to step it; the C64 kit does the same with keys."""
+        self.ed.cycle(field)
+        self.status()
+
     def pick(self, code):
         self.code = code
         self.status()

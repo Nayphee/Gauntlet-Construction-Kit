@@ -17,6 +17,20 @@ differ by one insertion of fourteen bytes, so most addresses below `$996B`
 match in both and everything after is fourteen bytes lower in the arcade
 build. See **Two builds** at the end.
 
+## What changed most recently
+
+Four readings in these notes were corrected in September 2026, each from
+the game's code after play experience contradicted the earlier text:
+
+- **Teleporters** scan the *screen*, not a box around the pad
+- **Flags A bit 2** picks one exit at random; it was down as "teleporters live"
+- **Treasure rooms are timed**; the notes had said they were not
+- **Standing still opens every door**, then turns every wall into an exit -
+  a countdown in the program, absent from these notes entirely
+
+Each section says what it said before, so nobody who read the old version
+is left wondering which way the error ran.
+
 ## The map in memory
 
 The level occupies a 32x32 grid of bytes at `$0C00`-`$0FFF`, one byte a
@@ -335,27 +349,59 @@ until it is shot. `$B3C6` replaces the cell with whatever `$B43D` holds when
 a shot reaches `$1F`, `$33`, `$34`, `$35`, or a code in the range at
 `$B43B`-`$B43C`.
 
+### One exit of several, chosen at random
+
+Flags A bit 2 gates a routine at `$C9ED`, reached from `$80C0` at level
+start:
+
+```asm
+$C9ED  lda $0a01
+$C9F0  and #$04
+$C9F2  bne $c9f5        ; clear: leave the map alone
+$C9F5  lda $dc04        ; a number from the CIA timers
+       ...
+$CA04  cmp $c812        ; below the exit count?
+$CA07  bcs $c9f5        ; no: roll again
+$CA09  sta $c813        ; keep it - this is the exit that survives
+$CA1D  cmp #$36         ; then sweep all four map pages
+$CA2C  lda #$00
+$CA2E  sta ($8c),y      ; ...erasing every exit but that one
+```
+
+So a level may be drawn with several exits and show only **one**, picked
+afresh each time it is played. The arcade sets this on 33 levels, 31 of
+which carry more than one exit tile.
+
+The C64 construction kit does not expose it, and neither did this
+project's notes, which had the bit down as "teleporters live" - it sits
+next to the teleporter code but reads `$36`, the exit tile.
+
 ### Teleporters
 
-`$AF78` looks for a destination by scanning a **16 by 10 window**, and the
-window is the *screen*: it starts from `$87BC` and `$87BE`, the scroll
-position, not from the teleporter. So the destination has to be on screen
-when the player steps on the source, and since the screen follows the
-player that means within roughly seven columns and four rows of the pad.
-A pair further apart than that does nothing at all when stood on. 91% of
-the arcade's pads have a partner inside that box.
+`$AF78` looks for a destination by scanning a **16 by 10 window of the
+screen**. It starts from `$87BC` and `$87BE` - the scroll position - not
+from the teleporter itself. So the destination has to be visible when the
+player steps on the source, and since the screen follows the player, that
+means within roughly **seven columns and four rows** of the pad. A pair
+further apart than that does nothing at all when stood on.
 
-This was first documented as a window around the source, and `$8D23` needs at least two teleporters in its list. A lone
-teleporter does nothing. A partner more than fifteen columns or nine rows
-away will not be found.
+`$8D23` needs at least two teleporters in its list; a lone teleporter does
+nothing either.
 
-That gives the design constraint: pairs have to be close enough to be
-found and far enough apart to be worth stepping on. The shipped pairs sit
-about nineteen cells apart, comfortably inside the window.
+That gives the design constraint: pairs have to be close enough to be on
+screen together and far enough apart to be worth stepping on. 91% of the
+arcade's pads have a partner inside that box. Where the scroll clamps at a
+map edge, the visible box sits off-centre and the reach changes.
 
 A teleporter also makes a region reachable that has no way in on foot. The
 arcade uses this: fifteen of its levels have an exit that cannot be walked
-to, and nine of those are reached by teleporting.
+to, and nine of those are reached by teleporting. Three quarters of the
+arcade's pads land in a region that cannot be walked to with the doors
+shut - a teleporter is how you get into a vault without spending a key.
+
+**This was first documented as a window around the source**, which allowed
+pairs up to fifteen columns and nine rows apart. Pairs built to that rule
+were useless two times in five, because the partner was never on screen.
 
 ## Wall graphics and colour
 

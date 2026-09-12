@@ -974,8 +974,16 @@ edkd    cmp #$47                ; g - wall graphic set
         jsr dogfx
         jmp edloop
 edke    cmp #$4b                ; k - wall colour
-        bne edkf
+        bne edkx
         jsr docol
+        jmp edloop
+edkx    cmp #$45                ; e - one exit only
+        bne edkw
+        jsr doexit
+        jmp edloop
+edkw    cmp #$57                ; w - scroll limits: none/wide/tall/both
+        bne edkf
+        jsr doscrl
         jmp edloop
 edkf    cmp #$51                ; q - quit, confirmed here
         bne edexit
@@ -1204,10 +1212,10 @@ eds4    rts
 ; ---- the live panel fields: cursor position, tile name, mode
 edpanl  jsr drawlv
         lda curx
-        ldx #114                ; row 2, columns 34-35
+        ldx #73                 ; row 1, columns 33-34: "X12"
         jsr pdig
         lda cury
-        ldx #154                ; row 3
+        ldx #77                 ; and columns 37-38: "Y19"
         jsr pdig
         jsr pclr                ; row 5: the item label
         ldx #4
@@ -1228,7 +1236,7 @@ edp1    lda (srclo),y
         lda #5
         jsr pblit
         jsr undnam              ; what the cursor is standing on
-        jsr pclr                ; row 10: is paint-as-you-move on?
+        jsr pclr                ; row 14: is paint-as-you-move on?
         ldy #7
 edp2    lda mode
         beq edp3
@@ -1238,7 +1246,7 @@ edp3    lda lbdraw,y
 edp4    sta pbuf,y
         dey
         bpl edp2
-        lda #13
+        lda #14                 ; row 14: SCROLL: took 12 and 13
         jmp pblit
 
 ; ---- srclo/srchi = tilen + A*8, as a 16-bit address
@@ -1419,16 +1427,15 @@ pnbar   pha
         bpl pnbar
         jsr drawlv
 
-        jsr pclr                ; row 2: the x label
-        lda #24
+; Row 2 carries both cursor coordinates - "X nn Y nn" - which frees row 3
+; for the flag bits.  The panel is eight columns wide, so the two fit with
+; a space between them.
+        jsr pclr                ; row 1: both coordinate labels
+        lda #24                 ; X at column 32, Y at 36
         sta pbuf
-        lda #2
-        jsr pblit
-
-        jsr pclr                ; row 3: the y label
         lda #25
-        sta pbuf
-        lda #3
+        sta pbuf+4
+        lda #1
         jsr pblit
 
         jsr pclr                ; row 12: trap count
@@ -1555,6 +1562,77 @@ pnlu    lda lbund,x
         lda #6
         jsr pblit
 
+;----------------------------------------------------------------------
+; Rows 2-3 and 12-13: the two settings spelled out rather than abbreviated
+; to letters.  A panel that says EXITS: RANDOM needs no key to explain it.
+; The blank rows at 1, 12 and 14 paid for the space.
+;----------------------------------------------------------------------
+        jsr pclr                ; row 10: the EXITS: label
+        ldx #5
+pnex0   lda lbex,x
+        sta pbuf,x
+        dex
+        bpl pnex0
+        lda #10
+        jsr pblit
+
+        jsr pclr                ; row 11: normal, or one exit at random
+        ldx #5
+pnex1   lda buf+1
+        and #$04
+        beq pnex2
+        lda lbexr,x
+        jmp pnex3
+pnex2   lda lbexn,x
+pnex3   sta pbuf,x
+        dex
+        bpl pnex1
+        lda #11
+        jsr pblit
+
+        jsr pclr                ; row 12: the SCROLL: label
+        ldx #6
+pnsc0   lda lbscr,x
+        sta pbuf,x
+        dex
+        bpl pnsc0
+        lda #12
+        jsr pblit
+
+        jsr pclr                ; row 13: which of the four states
+        lda buf+1
+        and #$c0
+        beq pnsca
+        cmp #$40
+        beq pnscb
+        cmp #$80
+        beq pnscc
+        ldx #3
+pnscd   lda lbsc3,x
+        sta pbuf,x
+        dex
+        bpl pnscd
+        jmp pnscz
+pnsca   ldx #3
+pnsc1   lda lbsc0,x
+        sta pbuf,x
+        dex
+        bpl pnsc1
+        jmp pnscz
+pnscb   ldx #4
+pnsc2   lda lbsc1,x
+        sta pbuf,x
+        dex
+        bpl pnsc2
+        jmp pnscz
+pnscc   ldx #3
+pnsc3   lda lbsc2,x
+        sta pbuf,x
+        dex
+        bpl pnsc3
+pnscz   lda #13
+        jsr pblit
+
         jsr pnwarn
         jsr pnbyte
         jmp edpanl              ; the live fields too, so a fresh screen is
@@ -1677,13 +1755,13 @@ pnz2    tya
 ; ---- row 18: what the map would take to save.  Only an edit can change
 ;      it, so paint calls this rather than the whole panel: encoding costs
 ;      about 35,000 cycles, and doing that on every cursor step would drag.
-pnbyte  jsr pclr                ; row 10: the label
+pnbyte  jsr pclr                ; row 2: the label
         ldx #7
 pnbl1   lda lbbyte,x
         sta pbuf,x
         dex
         bpl pnbl1
-        lda #10
+        lda #2
         jsr pblit
         jsr pclr
         jsr encode              ; safe to repeat: apvec rebuilds the vector
@@ -1710,7 +1788,7 @@ pnb8    lda lbtoob,x
         sta pbuf,x
         dex
         bpl pnb8
-pnb9    lda #11
+pnb9    lda #3
         jsr pblit
         rts
 
@@ -1770,6 +1848,15 @@ lbstun  byte $13,$14,$15,$0e
 lbhurt  byte $08,$15,$12,$14
 lbnum   byte $0c,$05,$16,$05,$0c,$3f
 lbtile  byte $09,$14,$05,$0d,$3a
+; "EXITS:" and what the one-exit bit does; "SCROLL:" and its four states
+lbex    byte $05,$18,$09,$14,$13,$3a
+lbexn   byte $0e,$0f,$12,$0d,$01,$0c
+lbexr   byte $12,$01,$0e,$04,$0f,$0d
+lbscr   byte $13,$03,$12,$0f,$0c,$0c,$3a
+lbsc0   byte $0e,$0f,$0e,$05
+lbsc1   byte $08,$0f,$12,$09,$1a
+lbsc2   byte $16,$05,$12,$14
+lbsc3   byte $02,$0f,$14,$08
 lbdraw  byte $04,$12,$01,$17,$20,$0f,$06,$06
 lbdron  byte $04,$12,$01,$17,$20,$0f,$0e,$20
 lbgfx   byte $07,$06,$18,$20
@@ -2059,6 +2146,39 @@ dcy9    sta buf+1
 ; addresses that are not graphics at all - $DC04 is a CIA register.  Only
 ; 0-2 are offered, so every press of g actually changes something and none
 ; of them draws rubbish.
+;-----------------------------------------------------------------------
+; Three flag bits the kit could not reach before.  Each is one bit of
+; buf+1, so a single routine does all three with the mask in A.
+;
+;   $04  one exit only - the game keeps one exit tile and erases the rest,
+;        picked afresh each play.  33 of the arcade's levels set it.
+;   $40  extends the right/bottom scroll limit
+;   $80  extends the left/top limit, and drops the default left border
+;
+; These are not on the help page: the key list fills its screen, and every
+; attempt to squeeze a line in broke the page display.  They are in the
+; README instead.
+;-----------------------------------------------------------------------
+dobit   eor buf+1
+        sta buf+1
+        lda #1
+        sta dirty
+        jmp panel
+
+doexit  lda #$04                ; e - one exit only
+        jmp dobit
+
+; Bits 6 and 7 are adjacent, so the two scroll limits are one setting with
+; four states rather than two switches: none, wide, tall, both.  Adding
+; $40 to the pair steps it and wraps of its own accord.
+doscrl  lda buf+1
+        clc
+        adc #$40
+        sta buf+1
+        lda #1
+        sta dirty
+        jmp panel
+
 dogfx   lda buf+1               ; wall graphic set: 0, 1, 2
         and #$38
         clc
@@ -2313,23 +2433,33 @@ helptab byte $28,$20,$20,$12,$2a,$2a,$2a,$2a
         byte $53,$4b,$2e,$20,$20,$54,$48,$45
         byte $4e,$20,$50,$52,$45,$53,$53,$20
         byte $46,$49,$52,$45,$20,$54,$4f,$20
-        byte $50,$4c,$41,$59,$2e,$0d,$01,$0d
-        byte $23,$20,$54,$48,$45,$20,$47,$41
-        byte $4d,$45,$20,$52,$45,$41,$44,$53
-        byte $20,$41,$20,$4c,$45,$56,$45,$4c
-        byte $20,$46,$49,$4c,$45,$20,$45,$56
-        byte $45,$52,$59,$0d,$23,$20,$54,$49
-        byte $4d,$45,$20,$49,$54,$20,$43,$48
-        byte $41,$4e,$47,$45,$53,$20,$4c,$45
-        byte $56,$45,$4c,$2c,$20,$53,$4f,$20
-        byte $41,$4e,$20,$45,$44,$49,$54,$0d
-        byte $27,$20,$54,$41,$4b,$45,$53,$20
-        byte $45,$46,$46,$45,$43,$54,$20,$54
-        byte $48,$45,$20,$4e,$45,$58,$54,$20
-        byte $54,$49,$4d,$45,$20,$54,$48,$41
-        byte $54,$20,$4c,$45,$56,$45,$4c,$0d
-        byte $0b,$20,$43,$4f,$4d,$45,$53,$20
-        byte $55,$50,$2e,$0d,$01,$0d,$26,$20
+        byte $50,$4c,$41,$59,$2e,$0d,$23,$20
+        byte $54,$48,$45,$20,$47,$41,$4d,$45
+        byte $20,$52,$45,$41,$44,$53,$20,$41
+        byte $20,$4c,$45,$56,$45,$4c,$20,$46
+        byte $49,$4c,$45,$20,$45,$56,$45,$52
+        byte $59,$0d,$23,$20,$54,$49,$4d,$45
+        byte $20,$49,$54,$20,$43,$48,$41,$4e
+        byte $47,$45,$53,$20,$4c,$45,$56,$45
+        byte $4c,$2c,$20,$53,$4f,$20,$41,$4e
+        byte $20,$45,$44,$49,$54,$0d,$27,$20
+        byte $54,$41,$4b,$45,$53,$20,$45,$46
+        byte $46,$45,$43,$54,$20,$54,$48,$45
+        byte $20,$4e,$45,$58,$54,$20,$54,$49
+        byte $4d,$45,$20,$54,$48,$41,$54,$20
+        byte $4c,$45,$56,$45,$4c,$0d,$0b,$20
+        byte $43,$4f,$4d,$45,$53,$20,$55,$50
+        byte $2e,$0d,$01,$0d,$26,$20,$20,$54
+        byte $52,$41,$50,$53,$20,$43,$4c,$45
+        byte $41,$52,$20,$45,$56,$45,$52,$59
+        byte $20,$54,$52,$41,$50,$57,$41,$4c
+        byte $4c,$20,$41,$54,$20,$4f,$4e,$43
+        byte $45,$2e,$0d,$28,$20,$4c,$45,$56
+        byte $45,$4c,$53,$20,$31,$31,$38,$2d
+        byte $31,$32,$38,$20,$41,$52,$45,$20
+        byte $54,$48,$45,$20,$54,$52,$45,$41
+        byte $53,$55,$52,$45,$20,$52,$4f,$4f
+        byte $4d,$53,$2e,$0d,$01,$0d,$26,$20
         byte $20,$20,$12,$20,$50,$52,$45,$53
         byte $53,$20,$41,$4e,$59,$20,$4b,$45
         byte $59,$20,$46,$4f,$52,$20,$54,$48
@@ -2374,142 +2504,148 @@ helptab byte $28,$20,$20,$12,$2a,$2a,$2a,$2a
         byte $4f,$44,$45,$20,$20,$20,$20,$20
         byte $20,$3f,$20,$20,$20,$20,$20,$20
         byte $54,$48,$49,$53,$20,$53,$43,$52
-        byte $45,$45,$4e,$0d,$27,$2b,$2d,$20
-        byte $20,$20,$4c,$45,$56,$45,$4c,$20
-        byte $2b,$2d,$31,$20,$20,$20,$20,$20
-        byte $20,$20,$53,$48,$46,$54,$2b,$2d
-        byte $20,$4c,$45,$56,$45,$4c,$20,$2b
-        byte $2d,$31,$30,$0d,$01,$0d,$24,$12
-        byte $50,$41,$4e,$45,$4c,$92,$20,$20
-        byte $20,$20,$58,$20,$26,$20,$59,$20
-        byte $3d,$20,$54,$48,$45,$20,$4d,$41
-        byte $50,$20,$49,$53,$20,$33,$32,$58
-        byte $33,$32,$0d,$1f,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$49,$54
-        byte $45,$4d,$20,$3d,$20,$53,$45,$4c
-        byte $45,$43,$54,$45,$44,$20,$49,$54
-        byte $45,$4d,$0d,$23,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$43,$55,$52,$53
-        byte $4f,$52,$20,$3d,$20,$49,$54,$45
-        byte $4d,$20,$55,$4e,$44,$45,$52,$20
-        byte $43,$55,$52,$53,$4f,$52,$0d,$22
+        byte $45,$45,$4e,$0d,$28,$45,$20,$20
+        byte $20,$20,$45,$58,$49,$54,$20,$4d
+        byte $4f,$44,$45,$20,$20,$20,$20,$20
+        byte $20,$20,$57,$20,$20,$20,$20,$20
+        byte $20,$53,$43,$52,$4f,$4c,$4c,$20
+        byte $4d,$4f,$44,$45,$0d,$27,$2b,$2d
+        byte $20,$20,$20,$4c,$45,$56,$45,$4c
+        byte $20,$2b,$2d,$31,$20,$20,$20,$20
+        byte $20,$20,$20,$53,$48,$46,$54,$2b
+        byte $2d,$20,$4c,$45,$56,$45,$4c,$20
+        byte $2b,$2d,$31,$30,$0d,$01,$0d,$2a
+        byte $12,$50,$41,$4e,$45,$4c,$92,$20
+        byte $20,$20,$58,$30,$30,$20,$59,$30
+        byte $30,$20,$3d,$20,$43,$55,$52,$53
+        byte $4f,$52,$20,$4f,$4e,$20,$41,$20
+        byte $33,$32,$58,$33,$32,$20,$4d,$41
+        byte $50,$0d,$21,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$20,$20,$42,$59,$54
+        byte $45,$53,$20,$3d,$20,$35,$31,$31
+        byte $20,$42,$59,$54,$45,$53,$20,$46
+        byte $52,$45,$45,$0d,$20,$20,$20,$20
         byte $20,$20,$20,$20,$20,$20,$20,$20
-        byte $20,$53,$48,$4f,$54,$53,$20,$3d
-        byte $20,$4e,$4f,$52,$4d,$41,$4c,$2f
-        byte $53,$54,$55,$4e,$2f,$48,$55,$52
-        byte $54,$0d,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$42,$59,$54,$45
-        byte $53,$20,$3d,$20,$35,$31,$31,$20
-        byte $42,$59,$54,$45,$53,$20,$46,$52
-        byte $45,$45,$0d,$24,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$44,$52
-        byte $41,$57,$20,$3d,$20,$44,$52,$41
-        byte $57,$20,$4d,$4f,$44,$45,$20,$28
-        byte $4f,$4e,$2f,$4f,$46,$46,$29,$0d
-        byte $24,$20,$20,$20,$20,$20,$20,$20
-        byte $54,$52,$20,$26,$20,$54,$57,$20
-        byte $3d,$20,$54,$52,$41,$50,$53,$20
-        byte $26,$20,$54,$52,$41,$50,$20,$57
-        byte $41,$4c,$4c,$53,$0d,$27,$20,$20
-        byte $20,$20,$20,$47,$46,$58,$20,$26
-        byte $20,$43,$4f,$4c,$20,$3d,$20,$57
-        byte $41,$4c,$4c,$20,$47,$46,$58,$20
-        byte $30,$2d,$32,$2c,$20,$43,$4f,$4c
-        byte $20,$30,$2d,$36,$0d,$01,$0d,$26
-        byte $20,$20,$54,$52,$41,$50,$53,$20
-        byte $43,$4c,$45,$41,$52,$20,$45,$56
-        byte $45,$52,$59,$20,$54,$52,$41,$50
-        byte $57,$41,$4c,$4c,$20,$41,$54,$20
-        byte $4f,$4e,$43,$45,$2e,$0d,$28,$20
-        byte $4c,$45,$56,$45,$4c,$53,$20,$31
-        byte $31,$38,$2d,$31,$32,$38,$20,$41
-        byte $52,$45,$20,$54,$48,$45,$20,$54
-        byte $52,$45,$41,$53,$55,$52,$45,$20
-        byte $52,$4f,$4f,$4d,$53,$2e,$0d,$01
-        byte $0d,$26,$20,$20,$20,$12,$20,$50
-        byte $52,$45,$53,$53,$20,$41,$4e,$59
-        byte $20,$4b,$45,$59,$20,$46,$4f,$52
-        byte $20,$54,$48,$45,$20,$4e,$45,$58
-        byte $54,$20,$50,$41,$47,$45,$20,$92
-        byte $00,$1f,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$12,$20
-        byte $2a,$20,$4d,$41,$50,$20,$4c,$45
-        byte $47,$45,$4e,$44,$20,$2a,$20,$92
-        byte $0d,$01,$0d,$0a,$12,$54,$45,$52
-        byte $52,$41,$49,$4e,$92,$0d,$23,$20
-        byte $20,$98,$2e,$90,$20,$20,$45,$4d
-        byte $50,$54,$59,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$98,$12
-        byte $20,$92,$90,$20,$20,$57,$41,$4c
-        byte $4c,$0d,$28,$20,$20,$1f,$e6,$90
-        byte $20,$20,$54,$52,$41,$50,$57,$41
-        byte $4c,$4c,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$98,$12,$e6,$92,$90,$20
-        byte $20,$42,$52,$45,$41,$4b,$41,$42
-        byte $4c,$45,$0d,$27,$20,$20,$9f,$dd
-        byte $c0,$90,$20,$44,$4f,$4f,$52,$53
-        byte $20,$56,$2f,$48,$20,$20,$20,$20
-        byte $20,$20,$20,$1c,$db,$90,$20,$20
-        byte $54,$45,$4c,$45,$50,$4f,$52,$54
-        byte $45,$52,$0d,$23,$20,$20,$1e,$2a
-        byte $90,$20,$20,$53,$54,$41,$52,$54
-        byte $20,$20,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$90,$12,$58,$92,$90
-        byte $20,$20,$45,$58,$49,$54,$0d,$01
-        byte $0d,$0a,$12,$50,$49,$43,$4b,$55
-        byte $50,$53,$92,$0d,$20,$20,$20,$81
-        byte $24,$90,$20,$20,$54,$52,$45,$41
-        byte $53,$55,$52,$45,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$95,$de,$90,$20
-        byte $20,$4b,$45,$59,$0d,$23,$20,$20
-        byte $9e,$d1,$90,$20,$20,$43,$49,$44
-        byte $45,$52,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$9e,$d7,$90
-        byte $20,$20,$50,$4f,$49,$53,$4f,$4e
-        byte $0d,$21,$20,$20,$1c,$d3,$90,$20
-        byte $20,$46,$4f,$4f,$44,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$20,$20
-        byte $20,$1f,$40,$90,$20,$20,$54,$52
-        byte $41,$50,$0d,$28,$20,$20,$1f,$d8
-        byte $90,$20,$20,$4d,$41,$47,$49,$43
-        byte $20,$28,$42,$4c,$55,$45,$29,$20
-        byte $20,$20,$20,$9e,$d8,$90,$20,$20
-        byte $4d,$41,$47,$49,$43,$20,$28,$59
-        byte $45,$4c,$29,$0d,$23,$20,$20,$9a
-        byte $c1,$90,$20,$20,$50,$4f,$54,$49
-        byte $4f,$4e,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$96,$5c,$90,$20
-        byte $20,$41,$4d,$55,$4c,$45,$54,$0d
-        byte $1e,$20,$20,$20,$20,$20,$41,$52
-        byte $4d,$4f,$55,$52,$2c,$20,$43,$41
-        byte $52,$52,$59,$49,$4e,$47,$2c,$20
-        byte $4d,$41,$47,$49,$43,$2c,$0d,$23
+        byte $49,$54,$45,$4d,$20,$3d,$20,$53
+        byte $45,$4c,$45,$43,$54,$45,$44,$20
+        byte $49,$54,$45,$4d,$0d,$24,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$43
+        byte $55,$52,$53,$4f,$52,$20,$3d,$20
+        byte $49,$54,$45,$4d,$20,$55,$4e,$44
+        byte $45,$52,$20,$43,$55,$52,$53,$4f
+        byte $52,$0d,$23,$20,$20,$20,$20,$20
         byte $20,$20,$20,$20,$20,$53,$48,$4f
-        byte $54,$20,$50,$4f,$57,$45,$52,$2c
-        byte $20,$53,$48,$4f,$54,$20,$53,$50
-        byte $45,$45,$44,$2c,$20,$46,$49,$47
-        byte $48,$54,$0d,$01,$0d,$0b,$12,$4d
-        byte $4f,$4e,$53,$54,$45,$52,$53,$92
-        byte $0d,$26,$20,$20,$9c,$41,$90,$20
-        byte $47,$48,$4f,$53,$54,$20,$20,$20
-        byte $20,$9c,$42,$90,$20,$47,$52,$55
-        byte $4e,$54,$20,$20,$20,$20,$9c,$43
-        byte $90,$20,$44,$45,$4d,$4f,$4e,$0d
-        byte $26,$20,$20,$9c,$44,$90,$20,$4c
-        byte $4f,$42,$42,$45,$52,$20,$20,$20
-        byte $9c,$45,$90,$20,$53,$4f,$52,$43
-        byte $45,$52,$45,$52,$20,$9c,$46,$90
-        byte $20,$44,$45,$41,$54,$48,$0d,$26
-        byte $20,$20,$20,$20,$49,$4e,$56,$45
-        byte $52,$53,$45,$44,$20,$9c,$12,$41
-        byte $2d,$45,$92,$90,$20,$49,$53,$20
-        byte $49,$54,$53,$20,$47,$45,$4e,$45
-        byte $52,$41,$54,$4f,$52,$0d,$01,$0d
-        byte $23,$20,$20,$20,$20,$20,$20,$20
+        byte $54,$53,$20,$3d,$20,$4e,$4f,$52
+        byte $4d,$41,$4c,$2f,$53,$54,$55,$4e
+        byte $2f,$48,$55,$52,$54,$0d,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$45,$58,$49,$54,$53,$20,$3d
+        byte $20,$4e,$4f,$52,$4d,$41,$4c,$2f
+        byte $52,$41,$4e,$44,$4f,$4d,$0d,$27
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$53,$43,$52,$4f,$4c,$4c,$20
+        byte $3d,$20,$4e,$4f,$4e,$45,$2f,$48
+        byte $4f,$52,$49,$5a,$2f,$56,$45,$52
+        byte $54,$2f,$42,$4f,$54,$48,$0d,$25
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$44,$52,$41,$57,$20
+        byte $3d,$20,$44,$52,$41,$57,$20,$4d
+        byte $4f,$44,$45,$20,$28,$4f,$4e,$2f
+        byte $4f,$46,$46,$29,$0d,$25,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$54,$52
+        byte $20,$26,$20,$54,$57,$20,$3d,$20
+        byte $54,$52,$41,$50,$53,$20,$26,$20
+        byte $54,$52,$41,$50,$20,$57,$41,$4c
+        byte $4c,$53,$0d,$28,$20,$20,$20,$20
+        byte $20,$20,$47,$46,$58,$20,$26,$20
+        byte $43,$4f,$4c,$20,$3d,$20,$57,$41
+        byte $4c,$4c,$20,$47,$46,$58,$20,$30
+        byte $2d,$32,$2c,$20,$43,$4f,$4c,$20
+        byte $30,$2d,$36,$0d,$01,$0d,$26,$20
         byte $20,$20,$12,$20,$50,$52,$45,$53
         byte $53,$20,$41,$4e,$59,$20,$4b,$45
-        byte $59,$20,$54,$4f,$20,$53,$54,$41
-        byte $52,$54,$20,$92,$00,$00
+        byte $59,$20,$46,$4f,$52,$20,$54,$48
+        byte $45,$20,$4e,$45,$58,$54,$20,$50
+        byte $41,$47,$45,$20,$92,$00,$1f,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$12,$20,$2a,$20,$4d
+        byte $41,$50,$20,$4c,$45,$47,$45,$4e
+        byte $44,$20,$2a,$20,$92,$0d,$01,$0d
+        byte $0a,$12,$54,$45,$52,$52,$41,$49
+        byte $4e,$92,$0d,$23,$20,$20,$98,$2e
+        byte $90,$20,$20,$45,$4d,$50,$54,$59
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$98,$12,$20,$92,$90
+        byte $20,$20,$57,$41,$4c,$4c,$0d,$28
+        byte $20,$20,$1f,$e6,$90,$20,$20,$54
+        byte $52,$41,$50,$57,$41,$4c,$4c,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$98
+        byte $12,$e6,$92,$90,$20,$20,$42,$52
+        byte $45,$41,$4b,$41,$42,$4c,$45,$0d
+        byte $27,$20,$20,$9f,$dd,$c0,$90,$20
+        byte $44,$4f,$4f,$52,$53,$20,$56,$2f
+        byte $48,$20,$20,$20,$20,$20,$20,$20
+        byte $1c,$db,$90,$20,$20,$54,$45,$4c
+        byte $45,$50,$4f,$52,$54,$45,$52,$0d
+        byte $23,$20,$20,$1e,$2a,$90,$20,$20
+        byte $53,$54,$41,$52,$54,$20,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $90,$12,$58,$92,$90,$20,$20,$45
+        byte $58,$49,$54,$0d,$01,$0d,$0a,$12
+        byte $50,$49,$43,$4b,$55,$50,$53,$92
+        byte $0d,$20,$20,$20,$81,$24,$90,$20
+        byte $20,$54,$52,$45,$41,$53,$55,$52
+        byte $45,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$95,$de,$90,$20,$20,$4b,$45
+        byte $59,$0d,$23,$20,$20,$9e,$d1,$90
+        byte $20,$20,$43,$49,$44,$45,$52,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$9e,$d7,$90,$20,$20,$50
+        byte $4f,$49,$53,$4f,$4e,$0d,$21,$20
+        byte $20,$1c,$d3,$90,$20,$20,$46,$4f
+        byte $4f,$44,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$1f,$40
+        byte $90,$20,$20,$54,$52,$41,$50,$0d
+        byte $28,$20,$20,$1f,$d8,$90,$20,$20
+        byte $4d,$41,$47,$49,$43,$20,$28,$42
+        byte $4c,$55,$45,$29,$20,$20,$20,$20
+        byte $9e,$d8,$90,$20,$20,$4d,$41,$47
+        byte $49,$43,$20,$28,$59,$45,$4c,$29
+        byte $0d,$23,$20,$20,$9a,$c1,$90,$20
+        byte $20,$50,$4f,$54,$49,$4f,$4e,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$96,$5c,$90,$20,$20,$41,$4d
+        byte $55,$4c,$45,$54,$0d,$1e,$20,$20
+        byte $20,$20,$20,$41,$52,$4d,$4f,$55
+        byte $52,$2c,$20,$43,$41,$52,$52,$59
+        byte $49,$4e,$47,$2c,$20,$4d,$41,$47
+        byte $49,$43,$2c,$0d,$23,$20,$20,$20
+        byte $20,$20,$53,$48,$4f,$54,$20,$50
+        byte $4f,$57,$45,$52,$2c,$20,$53,$48
+        byte $4f,$54,$20,$53,$50,$45,$45,$44
+        byte $2c,$20,$46,$49,$47,$48,$54,$0d
+        byte $01,$0d,$0b,$12,$4d,$4f,$4e,$53
+        byte $54,$45,$52,$53,$92,$0d,$26,$20
+        byte $20,$9c,$41,$90,$20,$47,$48,$4f
+        byte $53,$54,$20,$20,$20,$20,$9c,$42
+        byte $90,$20,$47,$52,$55,$4e,$54,$20
+        byte $20,$20,$20,$9c,$43,$90,$20,$44
+        byte $45,$4d,$4f,$4e,$0d,$26,$20,$20
+        byte $9c,$44,$90,$20,$4c,$4f,$42,$42
+        byte $45,$52,$20,$20,$20,$9c,$45,$90
+        byte $20,$53,$4f,$52,$43,$45,$52,$45
+        byte $52,$20,$9c,$46,$90,$20,$44,$45
+        byte $41,$54,$48,$0d,$26,$20,$20,$20
+        byte $20,$49,$4e,$56,$45,$52,$53,$45
+        byte $44,$20,$9c,$12,$41,$2d,$45,$92
+        byte $90,$20,$49,$53,$20,$49,$54,$53
+        byte $20,$47,$45,$4e,$45,$52,$41,$54
+        byte $4f,$52,$0d,$01,$0d,$23,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$12
+        byte $20,$50,$52,$45,$53,$53,$20,$41
+        byte $4e,$59,$20,$4b,$45,$59,$20,$54
+        byte $4f,$20,$53,$54,$41,$52,$54,$20
+        byte $92,$00,$00
 
 ; ----------------------------------------------------------------------
 ; newlvl - build the smallest valid level and decode it.
