@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![Editing the first level](editscreen.png)
+![Editing the first level](editorscreen.png)
 
 Two things, in two places.
 
