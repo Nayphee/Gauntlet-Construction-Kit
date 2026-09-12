@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![Editing the first level](editcore.py)
+![Editing the first level](editscreen.png)
 
 Two things, in two places.
 
