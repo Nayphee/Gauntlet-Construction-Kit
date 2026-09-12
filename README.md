@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![Commodore 64 editor](editorscreen.png)
+![Commodore 64 Editor](editorscreen.png)
 
 Two things, in two places.
 
