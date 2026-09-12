@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![The construction kit editing level 1](editorscreen.png)
+Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
@@ -24,9 +24,6 @@ overnight.
 The 128 levels on the finished `gauntlet_levels.d64` were generated rather
 than designed, which makes them, in the tradition of *Gauntlet: The Deeper
 Dungeons*, something more like **Gauntlet: The Sloppier Dungeons**.
-It's far from perfect but I felt I had to ship the construction kit with
-at least something for the user to play with instead of an empty level
-disk.
 
 A couple of dozen are set pieces that were designed — the two Deaths
 levels, the vault, the hoard, the ones built out of doors, the ones that
@@ -292,6 +289,35 @@ it survives a load and a save — and applies the design rules:
 
 It uses `gcore.prg` and `symbols.json` (the assembled editor and its symbol
 table) with the simulator in `tools/`.
+
+## Editing on a PC
+
+`gauntkit-pc.py` is the same editor for a desktop, in Python:
+
+    python3 gauntkit-pc.py gauntlet_levels.d64
+    python3 gauntkit-pc.py levels/
+
+It shows the **whole 32 by 32 map at once**, which the C64 kit cannot —
+that one scrolls a 16 by 10 window. Click to paint, right-click to pick up
+the tile under the cursor, `[` and `]` to change level, `s` to save, `w` to
+write every level out to a directory. The byte count and the warnings are
+the same ones the C64 panel shows, because a level still has to fit in 511
+bytes wherever it was edited.
+
+It needs only Python 3 and tkinter, which ships with Python on Windows and
+macOS (`apt install python3-tk` on Debian or Ubuntu).
+
+Saving keeps the level's original wall bytes and appends only what changed,
+so an untouched level saves byte-identical and walls cannot be corrupted by
+an edit — the same scheme the C64 kit uses. Writing back into a `.d64` in
+place is deliberately not offered: records change length and re-threading
+the sector chain is a different job. Write the levels to a directory and
+build a fresh disk:
+
+    python3 mklevdisk.py --levels edited --out my.d64
+
+The editing logic is in `editcore.py` and is tested; `gauntkit-pc.py` is
+the widgets on top.
 
 ## Building the editor from source
 
