@@ -1,6 +1,13 @@
 # Gauntlet Construction Kit and level generator
 
-Two things, in two places.
+![The construction kit editing](editorscreen.png)
+
+Two things: 
+1) a Commodore 64 Gauntlet level construction kit that runs on a Commodore 64 on a
+   disk with new pre-generated levels.
+2) a series of python scripts to automatically generate the levels, an editor
+   to manually edit them, and a series of tools to master them to d64 or
+   tap (C64 dis or tape respectively)
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
