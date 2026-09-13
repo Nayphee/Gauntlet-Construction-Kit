@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![Commodore 64 editor](editorscreen.png)
+Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
@@ -126,8 +126,8 @@ and measured against the original's 128 they are:
 | traps | 0.8 | 1.8 |
 | traps in levels 1-8 | 3 | 15 |
 | teleporters | 1.2 | 2.4 |
-| monsters | 33.9 | 38.9 |
-| generators | 29.7 | 34.0 |
+| monsters | 33.9 | 35.7 |
+| generators | 29.7 | 31.5 |
 
 Nearly three times the Deaths, on almost every level. Twice the traps, and
 five times as many in the opening levels — *Your Sinclair*'s "blue flashing
@@ -202,7 +202,7 @@ that stores them as separate `LEVEL nnn` files. Press `?` for the key list.
 Two keys reach settings the kit could not touch before. **`E`** turns
 *one exit only* on and off — the game then keeps one exit tile and erases
 the rest, picked afresh each play. **`W`** steps the scroll limits through
-`NONE`, `HORIZ`, `VERT` and `BOTH`: they are two adjacent bits, so they
+`NONE`, `VERT`, `HORIZ` and `BOTH`: they are two adjacent bits, so they
 read better as one setting with four states than as two switches. The
 panel spells both out — `EXITS: NORMAL` or `RANDOM`, `SCROLL: HORIZ` and
 so on — rather than abbreviating them to letters. Both editors offer the
@@ -334,7 +334,7 @@ step it:
 | wall colour | which of eight colours they use |
 | shots | normal, hurt, stun, or both — the game applies the two independently |
 | one exit only | keep one exit at random and erase the others |
-| scroll limits | `none`, `horiz`, `vert` or `both` |
+| scroll limits | `none`, `vert`, `horiz` or `both` |
 
 These live in the two flag bytes of the header rather than the map, which
 is why changing them never alters a single cell.
@@ -380,18 +380,25 @@ expands - roughly twice the food and three times the magic.
 
 | per level | arcade | this set |
 |-----------|--------|----------|
-| food | 5.9 | 6.1 |
-| magic | 1.2 | 1.2 |
-| treasure | 23.0 | 28.4 |
-| monsters | 33.9 | 33.7 |
-| generators | 29.7 | 30.9 |
-| keys | 4.7 | 4.1 |
-| dead ends | 17.5 | 14.2 |
-| walk to the exit | 68 steps | 56 |
+| food | 5.9 | 6.0 |
+| magic | 1.2 | 1.3 |
+| treasure | 23.0 | 26.4 |
+| monsters | 33.9 | 35.7 |
+| generators | 29.7 | 31.5 |
+| keys | 4.7 | 3.7 |
+| dead ends | 17.5 | 13.3 |
+| walk to the exit | 68 steps | 58 |
 
 Measured on the shipped `gauntlet_levels.d64` with `audit.py`. Where the
 set still falls short — keys, and the shape of the maps, which are more
 open than the original's — `LEVELS.md` says so.
+
+Level 33 is the long one. With horizontal scrolling on, stepping off the
+right edge of the map lands you at the left edge one row down, and level
+33 is built on that: four channels of sloping walls the player laps
+around a helix, with the trap at the far end and the exit walled in near
+the start. 118 steps out to spring the trap and 88 back — about twice the
+longest ordinary level.
 
 Two of the game's less-used devices are in the set as well. A handful of
 levels are drawn with **three or four exits, of which the game keeps one

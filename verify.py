@@ -78,7 +78,10 @@ for n in range(1, 129):
     if len(starts) != 1:
         note(n, '%d start markers' % len(starts))
         continue
-    shut = GL.bfs(lv.grid, starts[0])
+    # on a horizontal-scroll level the player can walk the wrap, and a
+    # level may be built on nothing else; every view takes it
+    wr = bool(lv.flags1 & 0x80)
+    shut = GL.bfs(lv.grid, starts[0], wrap=wr)
     traplist = [p for p, k in at.items() if k == 0x2F]
     # A trap-wall stands until a trap is sprung, and then every one goes.
     # Teleporters count here: stepping on one is a way to reach a trap
@@ -86,10 +89,10 @@ for n in range(1, 129):
     # out made this stricter than the generator's own rule, so a level
     # could pass there and fail here.
     before = GL.bfs(lv.grid, starts[0], doors_open=True, shoot=True,
-                    teleport=True)
+                    teleport=True, wrap=wr)
     # a teleporter is a way through, so it counts towards reachability
     opened = GL.bfs(lv.grid, starts[0], doors_open=True, shoot=True,
-                    teleport=True, sprung=bool(traplist))
+                    teleport=True, sprung=bool(traplist), wrap=wr)
     if traplist and not any(p in before for p in traplist):
         note(n, 'no trap can be reached without passing a trap-wall')
 
@@ -112,7 +115,7 @@ for n in range(1, 129):
     # made that check read teleport-inclusive distances, so a monster a
     # whole map away looked like it started on the player
     keyless = GL.bfs(lv.grid, starts[0], doors_open=False, shoot=True,
-                     sprung=bool(traplist), teleport=True)
+                     sprung=bool(traplist), teleport=True, wrap=wr)
     if opened and len(keyless) < 0.9 * len(opened) and keys == 0:
         # only a fault if a key would actually help: keys_needed returns
         # 99 when the locked part has no route through door barriers at
@@ -147,6 +150,23 @@ for n in range(1, 129):
                  % (need, keys))
     elif not any(e in opened for e in exits):
         note(n, 'the way out cannot be reached at all')
+    if traplist and exits:
+        # an exit only reachable once a trap has gone off is as far as the
+        # trap plus the walk back, not as close as the sprung map says
+        gated = [e for e in exits if e in opened and e not in before]
+        if gated:
+            best = None
+            for t in traplist:
+                if t not in before:
+                    continue
+                from_t = GL.bfs(lv.grid, t, doors_open=True, shoot=True,
+                                teleport=True, sprung=True, wrap=wr)
+                for e in gated:
+                    if e in from_t:
+                        tot = before[t] + from_t[e]
+                        best = tot if best is None else min(best, tot)
+            if best is not None and best < 40:
+                note(n, 'the trap-gated exit is only %d steps via the trap' % best)
     if lv.flags1 & 0x04:
         # One exit at random: the game keeps one of the exit tiles and
         # erases the rest, so every one of them has to be a real way out -

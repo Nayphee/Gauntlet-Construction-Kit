@@ -248,17 +248,18 @@ class Editor:
         'colour':    (2, 3, 3),    # wall colour, 0-7
         'shots':     (1, 0, 2),    # 0 none, 1 hurt, 2 stun
         'randexit':  (1, 2, 1),    # keep one exit at random, erase the rest
-        'scroll':    (1, 6, 2),    # bits 6 and 7 together: none/wide/tall/both
+        'scroll':    (1, 6, 2),    # bits 6 and 7: none/vert/horiz/both
     }
 
     # bit 0 hurts, bit 1 stuns, and the game applies both when both are
     # set: $AA24 stuns and falls through to $AA30, which does the damage
     SHOTS = ['normal', 'hurt', 'stun', 'both']
 
-    # Bit 6 extends the right/bottom scroll limit and bit 7 the left/top,
-    # and they sit next to each other, so they read better as one setting
-    # with four states than as two switches.
-    SCROLL = ['none', 'horiz', 'vert', 'both']
+    # Bit 6 lifts the clamp on $87BE, the row, and bit 7 the clamp on
+    # $87BC, the column - so bit 6 is vertical scrolling and bit 7
+    # horizontal.  They sit next to each other, so they read better as one
+    # setting with four states than as two switches.
+    SCROLL = ['none', 'vert', 'horiz', 'both']
 
     def get(self, field):
         byte, shift, width = self.FIELDS[field]

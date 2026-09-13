@@ -642,6 +642,60 @@ takes it to 30% — slightly meaner than the original.
 Hostiles standing on the route were already right: 51% against the
 arcade's 45%.
 
+## The view that runs past the edge
+
+Two flag bits govern how the screen follows the player. With neither set
+the view stops at the map's edge and the player walks toward the screen
+border. With bit 7 set the player stays centred even at the edge: the
+horizontal scroll goes negative or past 16, and since map addressing
+wraps, the far side of the map appears alongside. Bit 6 does the same for
+the vertical. `GAME-NOTES.md`, *Which scroll bit is which axis*, has the
+code.
+
+Bit 7 also opens column 0 as floor - the border the game would otherwise
+draw there - which is a corridor down the left edge that the layout never
+planned for. A level that takes the bit therefore has to pass the walk
+rule again with that shortcut in place; on one seed a level lost twelve
+steps to it and was rejected.
+
+The arcade sets these on 21 levels: 17 horizontal, 1 vertical, 3 both.
+This set does about the same, on the pool only: horizontal on every
+seventh level, vertical on one, both on two.
+
+**The wrap is walkable.** Map addressing wraps with a row shift, column
+0 is floor once bit 7 is set, and the player is not clamped: stepping off
+column 31 lands on column 0 of the row below. On an ordinary level that
+is a shortcut - measured with it, nine of seventeen horizontal-scroll
+levels on one seed had their exit under 40 steps, one at six - so any
+level with the bit has to keep its exit 40 steps off with the wrap
+counted. Built around it, the wrap is the opposite of a shortcut, which
+is the next section.
+
+### The helix, level 33
+
+Four channels slope down one row every four columns, so a lap along a
+channel ends one row lower than it began - exactly where the wrap puts
+you, at the top of the next channel on the left. The exit is in a pocket
+off the second channel, sealed with trap-wall. The trap is at the far end
+of the fourth. So the player walks the helix out, springs the trap, and
+walks all the way back:
+
+```
+start -> trap    118 steps
+trap  -> exit     88
+                 206 steps, against 120 for the longest ordinary level
+```
+
+Two rules had to learn something to accept it. Every reachability view
+now takes the wrap on a horizontal-scroll level, because this one is
+unreachable without it. And an exit that is only reachable once a trap
+has gone off is charged the real journey - start to trap, then trap to
+exit over the sprung map - rather than its distance on a map where the
+trap has already been pulled. On paper the pocket was 38 steps from the
+start; in practice it is 206. Both generator and verifier apply that
+rule, and the verifier was shown to catch a helix with its trap moved
+next to the start.
+
 ## One exit of several
 
 Flags A bit 2 makes the game keep one exit tile at random and erase the

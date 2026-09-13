@@ -403,6 +403,61 @@ shut - a teleporter is how you get into a vault without spending a key.
 pairs up to fifteen columns and nine rows apart. Pairs built to that rule
 were useless two times in five, because the partner was never on screen.
 
+## Which scroll bit is which axis
+
+`$AF78` settles it. It builds the teleporter's search window from the two
+scroll registers: `$87BC` becomes the **column** with a width of `$0F`+1,
+and `$87BE` the **row** with a height of `9`+1. So `$87BC` is the
+horizontal position and `$87BE` the vertical.
+
+Their clamps then say which flag bit governs which:
+
+```asm
+$9354  bit $0a01        ; bit 7
+$9357  bmi $935b
+$9359  lda #$00         ; clear: floor the column scroll at 0
+$935F  bit $0a01
+$9364  lda #$10         ; and ceiling it at $10
+$9367  sta $87bc
+
+$937A  bit $0a01        ; bit 6
+$937D  bvs $9381
+$937F  lda #$00         ; clear: floor the row scroll at 0
+$9385  bit $0a01
+$938A  lda #$17         ; and ceiling it at $17
+$938D  sta $87be
+```
+
+The map is 32 cells wide and the view 16, so a horizontal scroll of `$10`
+is the whole range - which is the tell that bit 7 is the horizontal one.
+
+**Bit 6 is vertical, bit 7 horizontal.** These notes and both editors had
+them the other way round at first, from a guess at "wide" and "tall"
+rather than from this code.
+
+### The wrap is walkable
+
+With bit 7 set, the view running past the map edge is only half of it.
+Map addressing wraps with a row shift, column 0 is floor, and the player
+is not clamped: **stepping off column 31 lands on column 0 of the row
+below.** The map becomes a helix.
+
+This was confirmed by play rather than by tracing the movement code -
+by levels that depend on it. The generator's level 33 is one: four
+channels of diagonal walls run the width of the map, a lap along a channel
+ends one row lower than it began, which is exactly where the wrap puts the
+player, and the exit sits in a trap-walled pocket with the trap at the far
+end of the helix. 118 steps out, 88 back, 206 in all. A hand-built level
+in the construction kit does the same with two channels. Every lap costs
+the whole width for one row of descent, so the walk is enormous. That is
+what the horizontal-scroll bit is *for*: not a shortcut, a device for
+making the map longer than it is.
+
+On a level not built around it, though, the wrap is a shortcut - column 0
+is a corridor down the left edge, and column 31 joins it. The generator
+treats it that way: any level with the bit has to keep its exit 40 steps
+off with the wrap counted.
+
 ## Wall graphics and colour
 
 `$8C80` holds eight wall graphic pointers but only **three** are distinct:

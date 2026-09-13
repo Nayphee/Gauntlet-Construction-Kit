@@ -2159,6 +2159,81 @@ def remove_cells(walls, cells):
     walls.runs = fresh
 
 
+def theme_helix(rng):
+    """Channels joined by the wrap: the longest walk the format allows.
+
+    Horizontal scrolling lets the player step off column 31 onto column 0
+    of the row below.  Four channels slope down one row every four
+    columns, so a lap along a channel ends one row lower than it began -
+    exactly where the wrap puts you, at the top of the next channel.  The
+    only way through is to walk every channel end to end: four laps of
+    the map, and the exit at the far end of the last one.  A trap-wall
+    seals the one place the channels could be crossed early; the trap
+    that opens it sits at the end of the third lap.
+
+    This is the design a player found in the editor.  It is only a level
+    at all because the wrap is walkable, which is why the scroll bit is
+    set on it and the walk is measured with the wrap on.
+    """
+    walls = Walls()
+    objs = {}
+    PITCH = 4                      # columns per row of drop
+    LANES = 4
+    DROP = W // PITCH              # 8 rows per lap
+    # Each channel boundary is a shallow staircase from the left edge to
+    # the right: treads of PITCH cells, dropping one row each.  Drawn as
+    # runs of length PITCH with the drop folded in by starting the next
+    # tread one row down and one column on - no single-cell risers, which
+    # the vector grammar cannot place without ambiguity.
+    for k in range(LANES):
+        y = k * DROP
+        for i in range(W // PITCH):
+            x = i * PITCH
+            if y + i < H - 1:
+                walls.h(x, y + i, PITCH + 1 if x + PITCH < W else PITCH)
+    # the crossing: one gap in the third boundary, sealed with trap-wall
+    # The exit sits in a pocket off the second channel, sealed on its
+    # open side with trap-wall.  The trap is at the far end of the last
+    # channel.  So the player walks the helix out to spring it, then all
+    # the way back: going and coming, the whole map several times over.
+    pocket_y = DROP + 3
+    walls.h(W - 6, pocket_y - 1, 6)           # the pocket's roof, to the edge
+    walls.h(W - 6, pocket_y + 1, 6)           # and floor
+    walls.v(W - 1, pocket_y - 1, 3)           # and its right wall: the wrap
+                                              # would otherwise deliver the
+                                              # player straight in from the
+                                              # left edge of the row below
+    walls.runs.append((0xC0, W - 6, pocket_y, 'S', 1 + 1))   # trap-wall door
+    start = (1, 2)
+    objs[start] = START
+    objs[(W - 2, pocket_y)] = EXIT
+    objs[(W - 3, (LANES - 1) * DROP + 6)] = TRAP   # end of the last lap
+    # the channels get walked, so furnish them: a little gold and a pack
+    # in each, food where a lap ends
+    rng2 = random.Random(rng.random())
+    for k in range(LANES):
+        ybase = k * DROP + 2
+        for x in range(3, W - 3, 3):
+            y = ybase + x // PITCH
+            if y < H - 1 and (x, y) not in objs:
+                # Alternate gold and monsters along each channel, a
+                # generator a lap, and the first channel's opening quiet:
+                # nothing hostile within a few steps of the start.  Each
+                # lap is a long walk, so it has to be worth walking.
+                quiet = k == 0 and x < 10
+                if quiet or (x // 3) % 2 == 0:
+                    objs[(x, y)] = TREASURE
+                elif x == 15:
+                    objs[(x, y)] = 0x20 + (k % 3) * 3      # a generator
+                else:
+                    objs[(x, y)] = FAMILIES[k % 3] + rng2.randint(0, 1)
+        fy = ybase + (W - 2) // PITCH
+        if fy < H - 1:
+            objs[(W - 2, fy)] = FOOD
+    objs[(2, DROP + 3)] = KEY
+    return walls, objs
+
+
 def theme_deaths_gauntlet(rng):
     """A run of Deaths down a corridor, with the magic to clear it.
 
@@ -2409,7 +2484,7 @@ def build(walls, objs, flags1=0, flags2=0):
 
 
 def bfs(grid, start, doors_open=False, shoot=False, teleport=False,
-        sprung=False):
+        sprung=False, wrap=False):
     """Step distances from start over walkable cells.
 
     Three views are needed: with doors shut and breakable walls standing,
@@ -2433,8 +2508,17 @@ def bfs(grid, start, doors_open=False, shoot=False, teleport=False,
     while queue:
         nxt = []
         for x, y in queue:
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                p = (x + dx, y + dy)
+            steps = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+            if wrap:
+                # Map addressing wraps with a row shift, so if the player
+                # is not clamped, column 31 steps to column 0 of the row
+                # below and back.  Whether the game allows the step is not
+                # settled; measuring as if it does is the safe side.
+                if x == W - 1 and y < H - 1:
+                    steps.append((0, y + 1))
+                if x == 0 and y > 0:
+                    steps.append((W - 1, y - 1))
+            for p in steps:
                 if not (0 <= p[0] < W and 0 <= p[1] < H) or p in dist:
                     continue
                 v = grid[p[1] * W + p[0]]
@@ -2495,16 +2579,22 @@ def playable(back, treasure_room_level):
     exits = [p for p, k in at.items() if k in (EXIT, 0x37, 0x38)]
     if len(starts) != 1 or not exits:
         return False
-    dist = bfs(back.grid, starts[0])                 # doors shut, walls up
+    # On a horizontal-scroll level the player can walk the wrap - column
+    # 31 to column 0 of the row below - and a level may be built on it, a
+    # helix of channels that only the wrap joins.  Every reachability view
+    # takes the wrap on such a level; the walk rule is then applied both
+    # with and without it further down.
+    wr = bool(back.flags1 & 0x80)
+    dist = bfs(back.grid, starts[0], wrap=wr)         # doors shut, walls up
     traplist = [p for p, k in at.items() if k == TRAP]
     # What the player can reach before pulling anything, and what the map
     # becomes once a trap goes off.  A trap-walled cage may hold the exit,
     # or the only way to the far half of the level, so long as a trap can
     # be reached without going through one.
     before = bfs(back.grid, starts[0], doors_open=True, shoot=True,
-                 teleport=True)
+                 teleport=True, wrap=wr)
     everywhere = bfs(back.grid, starts[0], doors_open=True, shoot=True,
-                     teleport=True, sprung=bool(traplist))
+                     teleport=True, sprung=bool(traplist), wrap=wr)
     if traplist and not any(p in before for p in traplist):
         return False
     reach = [e for e in exits if e in dist]
@@ -2534,6 +2624,27 @@ def playable(back, treasure_room_level):
     # the start - it only takes one close exit to make the level trivial,
     # and the player will take that one.
     walk = [everywhere[e] for e in reach if e in everywhere]
+    # An exit that is only reachable once a trap has gone off is not as
+    # close as the sprung map makes it look: the player has to get to the
+    # trap first.  Charge the real journey - start to the nearest trap,
+    # then trap to exit over the sprung map.  A helix level had its exit
+    # 38 steps from the start on paper and 206 in practice.
+    if traplist:
+        gated = [e for e in reach if e in everywhere and e not in before]
+        if gated:
+            reachable_traps = [t for t in traplist if t in before]
+            best = None
+            for t in reachable_traps:
+                from_t = bfs(back.grid, t, doors_open=True, shoot=True,
+                             teleport=True, sprung=True, wrap=wr)
+                for e in gated:
+                    if e in from_t:
+                        total = before[t] + from_t[e]
+                        best = total if best is None else min(best, total)
+            walk = [w for w, e in zip(walk, [e for e in reach if e in everywhere])
+                    if e not in gated]
+            if best is not None:
+                walk.append(best)
     # 28 was too generous a floor.  The arcade's median walk is 81 steps
     # and this set's was 55: on level 8 and after, an exit reached in half
     # a minute reads as a mistake rather than a breather.  The arcade does
@@ -3107,6 +3218,7 @@ THEMED = {
     26: theme_alldoors,       # a level built of doors, as the arcade's 27
     28: theme_keyring,        # keys threaded through them, as its 47 and 71
     31: theme_trapworks,
+    33: theme_helix,          # channels joined by the wrap: the long walk
     34: theme_austere,
     36: lambda r: theme_text(r, 'THYRA'),
     41: lambda r: theme_picture(r, 'sword'),
@@ -3722,7 +3834,7 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
                 placed.append(c)
 
     lv = build(walls, objs,
-               flags1=(gfx << 3) | shots,
+               flags1=(gfx << 3) | shots | scroll_for(n),
                flags2=((col if colour is None else colour) << 3))
     if G.check_vector_grammar(lv.cmds):
         return None
@@ -3927,6 +4039,25 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
     # the bit on a level with one exit is harmless but misleading.  Set it
     # from what is actually there.
     if want_random_exit(n):
+        # Measure every extra exit the way the verifier does - on the
+        # decoded grid, with teleporters - and drop any that come up
+        # short.  The layout-only measure at placement time missed a
+        # teleporter pair that cut one exit's walk from 50 to 26.
+        at = {(c % W, c // W): k for c, k in back.objects}
+        st = next(p for p, k in at.items() if k == START)
+        d = bfs(back.grid, st, doors_open=True, shoot=True, sprung=True,
+                teleport=True)
+        exits = [p for p, k in at.items() if k == EXIT]
+        far = [p for p in exits if d.get(p, 0) >= 40]
+        if len(far) < len(exits):
+            keep = set(far)
+            # the original exit stays whatever its walk: it passed the
+            # level's own rule already
+            keep.add(max(exits, key=lambda p: d.get(p, 0)))
+            lv.objects = [(c, k) for c, k in lv.objects
+                          if k != EXIT or (c % W, c // W) in keep]
+            data = G.encode(lv)
+            back = G.decode(data[2:])
         nexits = sum(1 for _, k in lv.objects if k == EXIT)
         if nexits >= 3 and not (lv.flags1 & 0x04):
             lv.flags1 |= 0x04
@@ -3988,6 +4119,31 @@ def shots_quota(rng):
                                               # applies the bits independently
     mode[128] = 0x02                          # the trap treasure room stuns
     return mode
+
+
+def scroll_for(n):
+    """Which scroll bits a level gets: none, vertical ($40), horizontal
+    ($80), or both.
+
+    The arcade sets these on 21 of its 128 levels - 17 horizontal, 1
+    vertical, 3 both.  With a bit set the view no longer stops at the map
+    edge: the player stays centred, the scroll runs past the edge, and the
+    far side of the map appears alongside.  Bit 7 also opens column 0 as
+    floor, a corridor down the left edge that the layout never planned
+    for, so a level that takes it has to pass the walk rule again with
+    that shortcut in place.  About the arcade's share, on the pool only.
+    """
+    if THEMED.get(n) is theme_helix:
+        return 0x80                           # the level is built on the wrap
+    if not (8 <= n <= 117) or n in THEMED:
+        return 0
+    if n in (40, 92):
+        return 0xC0                           # both
+    if n == 60:
+        return 0x40                           # vertical, the rare one
+    if n % 7 == 2:
+        return 0x80                           # horizontal
+    return 0
 
 
 def want_random_exit(n):
