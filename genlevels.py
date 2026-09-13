@@ -3696,6 +3696,31 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
         for c in [c for c, k in objs.items() if k in (FOOD, CIDER)]:
             del objs[c]
     gfx, col = look
+    if want_random_exit(n):
+        # Several exits, all real.  Each has to be reachable from the start
+        # and at least as far as the walk rule demands, because any of
+        # them may be the one the game keeps.  Placed on the finished
+        # layout so the walk to each can be measured, and spread out so
+        # they are not all in one corner.
+        start = next(c for c, k in objs.items() if k == START)
+        solid = walls.cells()
+        doors = {c for pen, x, y, dd, nn in walls.runs
+                 if pen in (DOORH_PEN, DOORV_PEN)
+                 for c in [(x + STEP[dd][0] * i, y + STEP[dd][1] * i)
+                           for i in range(nn)]}
+        d = walk_dist(start, walls, doors, passable_doors=True)
+        cand = [(x, y) for x in range(1, W - 1) for y in range(1, H - 1)
+                if (x, y) not in solid and (x, y) not in objs
+                and d.get((x, y), 0) >= 40]
+        rng.shuffle(cand)
+        placed = [c for c, k in objs.items() if k == EXIT]
+        for c in cand:
+            if len(placed) >= 4:
+                break
+            if all(abs(c[0] - p[0]) + abs(c[1] - p[1]) >= 10 for p in placed):
+                objs[c] = EXIT
+                placed.append(c)
+
     lv = build(walls, objs,
                flags1=(gfx << 3) | shots,
                flags2=((col if colour is None else colour) << 3))
@@ -3896,6 +3921,19 @@ def make(n, seed, shots=0x00, look=(0, 0), want_locked=False,
         # already being attacked".  Nothing hostile on the screen the
         # player sees when the level begins.
         return None
+
+    # The random-exit bit goes on only if several exits survived all of
+    # the above: a locked exit or a sealed one can prune the extras, and
+    # the bit on a level with one exit is harmless but misleading.  Set it
+    # from what is actually there.
+    if want_random_exit(n):
+        nexits = sum(1 for _, k in lv.objects if k == EXIT)
+        if nexits >= 3 and not (lv.flags1 & 0x04):
+            lv.flags1 |= 0x04
+            data = G.encode(lv)
+        elif nexits < 3 and (lv.flags1 & 0x04):
+            lv.flags1 &= ~0x04
+            data = G.encode(lv)
     return data
 
 
@@ -3946,8 +3984,22 @@ def shots_quota(rng):
         mode[n] = 0x02                        # stun
     for n in pool[27:33]:                     # and a handful that hurt
         mode[n] = 0x01
+    mode[pool[33]] = 0x03                     # one that does both: the game
+                                              # applies the bits independently
     mode[128] = 0x02                          # the trap treasure room stuns
     return mode
+
+
+def want_random_exit(n):
+    """Levels drawn with several exits, of which the game keeps one.
+
+    Flags A bit 2: at level start $C9ED counts the exit tiles, picks one
+    from the CIA timers, and erases the rest.  The arcade sets it on 33
+    levels.  Here it is a handful, and each of the exits has to be a real
+    way out - reachable, and far enough that the level is not trivial
+    whichever one survives.
+    """
+    return 8 <= n <= 117 and n % 13 == 6 and n not in THEMED
 
 
 def want_sealed(n):

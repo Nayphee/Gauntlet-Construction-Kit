@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![Commodore 64 editor](editorscreen.png)
+Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
@@ -380,18 +380,24 @@ expands - roughly twice the food and three times the magic.
 
 | per level | arcade | this set |
 |-----------|--------|----------|
-| food | 5.9 | 6.2 |
-| magic | 1.2 | 1.4 |
-| treasure | 23.0 | 25.6 |
-| monsters | 33.9 | 34.6 |
-| generators | 29.7 | 29.1 |
-| keys | 4.7 | 3.6 |
-| dead ends | 17.5 | 12.7 |
-| walk to the exit | 68 steps | 57 |
+| food | 5.9 | 6.1 |
+| magic | 1.2 | 1.2 |
+| treasure | 23.0 | 28.4 |
+| monsters | 33.9 | 33.7 |
+| generators | 29.7 | 30.9 |
+| keys | 4.7 | 4.1 |
+| dead ends | 17.5 | 14.2 |
+| walk to the exit | 68 steps | 56 |
 
 Measured on the shipped `gauntlet_levels.d64` with `audit.py`. Where the
 set still falls short — keys, and the shape of the maps, which are more
 open than the original's — `LEVELS.md` says so.
+
+Two of the game's less-used devices are in the set as well. A handful of
+levels are drawn with **three or four exits, of which the game keeps one
+at random** — the player sees them all and does not know which is real.
+And one level makes shots **both hurt and stun** other players, since the
+game applies the two bits independently.
 
 ## The documents
 

@@ -642,6 +642,24 @@ takes it to 30% — slightly meaner than the original.
 Hostiles standing on the route were already right: 51% against the
 arcade's 45%.
 
+## One exit of several
+
+Flags A bit 2 makes the game keep one exit tile at random and erase the
+rest, chosen afresh each play. The arcade sets it on 33 levels; this set
+sets it on a handful, and every exit on such a level has to be a real way
+out — reachable, and at least 40 steps off — because any of them may be
+the one that survives. The player sees three or four exits on the map and
+does not know which is real until they get there.
+
+`verify.py` checks every exit on a random-exit level against the walk
+rule, not just the nearest.
+
+## Shots that both hurt and stun
+
+The game applies the two friendly-fire bits independently, so a level may
+do both. One level in the pool does — the only way to see both messages
+print at once and both effects land.
+
 ## Secrets
 
 A secret is a room whose only way in is a stretch of wall that looks like

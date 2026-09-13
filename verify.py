@@ -147,6 +147,21 @@ for n in range(1, 129):
                  % (need, keys))
     elif not any(e in opened for e in exits):
         note(n, 'the way out cannot be reached at all')
+    if lv.flags1 & 0x04:
+        # One exit at random: the game keeps one of the exit tiles and
+        # erases the rest, so every one of them has to be a real way out -
+        # reachable, and not so close that the level is trivial if that
+        # is the one that survives.  Three is the least that makes the
+        # choice worth having.
+        plain = [p for p, k in at.items() if k == GL.EXIT]
+        if len(plain) < 3:
+            note(n, 'random exit is set but only %d exit tile(s) drawn' % len(plain))
+        for p in plain:
+            if p not in opened:
+                note(n, 'random exit at %s cannot be reached' % (p,))
+            elif opened[p] < 40:
+                note(n, 'random exit at %s is only %d steps from the start'
+                     % (p, opened[p]))
     walkable = sum(1 for v in lv.grid if v == 0 or v >= 0x13)
     if len(opened) < 0.9 * walkable:
         note(n, 'only %d of %d walkable cells reachable' % (len(opened), walkable))
