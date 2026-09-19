@@ -41,6 +41,7 @@ gridend = $9c                   ; high byte of grid + $400
 buf     = $9d00
 bufcap  = $9f                   ; high byte of buf + 512, the write guard
 pancol  = 11                    ; side panel colour; it is drawn reverse video
+base    = $9400                 ; the map as loaded, for striking undone edits
 weblk   = $9c00                 ; wall-edit list: POINT pairs appended to the
                                 ; vector section, 250 bytes = 125 edits max
 screen  = $0400
@@ -1156,30 +1157,53 @@ edd2
         jmp edloop
 
 ; ---- write the current tile, and log a wall edit if it is a vector tile
-paint   ldx tidx
+; Once the level is over the ceiling nothing more goes down: the only
+; edits that help are erases, and DEL still works.  Without this a player
+; could keep painting into a level that could never be saved.
+paint   lda ldst
+        beq paintk
+        rts
+paintk  ldx tidx
         lda tilev,x
         sta tmp
         jsr cellpt
         ldx #0
         lda (mlo,x)             ; already what the cursor holds?  Painting a
         cmp tmp                 ; wall over the same wall used to log a fresh
-        beq pnt9                ; edit every time, so brushing back and forth
-        lda #1                  ; grew the record by two bytes a step until
-        sta dirty               ; the level would no longer fit
+        bne pnt0                ; edit every time, so brushing back and forth
+        rts                     ; grew the record by two bytes a step until
+pnt0    lda #1                  ; the level would no longer fit
+        sta dirty
         lda tmp
         sta (mlo,x)
         ldx tidx
         lda tilep,x
         cmp #$ff
-        beq pnt9                ; an object: the object layer handles it
-        sta tmp
+        bne pnt1
+        rts                     ; an object: the object layer handles it
+pnt1    sta tmp
         jmp welog               ; tmp holds the pen
 
 ; ---- log a wall edit for the cell under the cursor, with the pen in tmp.
 ;      Both paint and erase come here: editing one cell three times used to
 ;      append three entries, so the record grew whether or not the map had
 ;      changed, and erase kept its own copy of the code that did it.
-welog   ldx #0
+welog   jsr cellpt              ; is the cell now what the level loaded with?
+        lda mhi
+        sec
+        sbc #4                  ; base sits four pages below grid
+        sta mhi
+        ldx #0
+        lda (mlo,x)             ; the tile as loaded
+        sta tmp2
+        lda mhi
+        clc
+        adc #4
+        sta mhi
+        lda (mlo,x)             ; the tile now
+        cmp tmp2
+        beq welstk              ; the same: strike any entry, log nothing
+        ldx #0
 wel1    cpx welen
         beq welnew
         lda weblk,x
@@ -1193,6 +1217,35 @@ wel1    cpx welen
 wel2    inx
         inx
         jmp wel1
+; the cell is back to what it was: find its entry and close the gap
+welstk  ldx #0
+wels1   cpx welen
+        bne wels1a
+        rts                     ; not listed: nothing to strike
+wels1a
+        lda weblk,x
+        and #$1f
+        cmp curx
+        bne wels2
+        lda weblk+1,x
+        and #$1f
+        cmp cury
+        beq wels3
+wels2   inx
+        inx
+        jmp wels1
+wels3   cpx welen               ; shift everything after it down two
+        beq wels5
+        lda weblk+2,x
+        sta weblk,x
+        lda weblk+3,x
+        sta weblk+1,x
+        inx
+        inx
+        jmp wels3
+wels5   dec welen
+        dec welen
+        rts
 welup   lda tmp
         ora curx
         sta weblk,x
@@ -2836,8 +2889,24 @@ newlvl  lda #6
         jmp decode
 
 ; clear the wall-edit list (called when a level is loaded)
+; Clear the edit list and keep a copy of the map as it was loaded, so an
+; edit that puts a cell back to what it was can be struck from the list
+; rather than logged on top.  Painting a wall and erasing it again used to
+; leave two bytes of edit per cell - the byte count never came back down,
+; and TOO BIG stayed on the screen after the mistake was cleared.
 clrwe   lda #0
         sta welen
+        ldx #0
+clrw1   lda grid,x              ; four pages, $9800 -> $9400
+        sta base,x
+        lda grid+$100,x
+        sta base+$100,x
+        lda grid+$200,x
+        sta base+$200,x
+        lda grid+$300,x
+        sta base+$300,x
+        inx
+        bne clrw1
         rts
 
 ; ======================================================================

@@ -1,8 +1,5 @@
 # Gauntlet Construction Kit and level generator
 
-![C64 editor screen](editorscreen.png)
-
-
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -213,7 +210,10 @@ same settings, so a level can be given them on either machine.
 
 The panel shows the byte cost of the level as you work: the format allows
 511 bytes and a level that will not fit cannot be saved, so the count
-matters. It warns about a missing start or exit, but never refuses a level
+matters. Past the ceiling it reads TOO BIG! and nothing more will paint
+until something is erased; erasing what you painted strikes the edit from
+the record rather than logging an erase on top of it, so the count comes
+back down and the message clears. It warns about a missing start or exit, but never refuses a level
 - you are free to build something unplayable if you want to, and history
 suggests you will.
 
