@@ -1,5 +1,8 @@
 # Gauntlet Construction Kit and level generator
 
+![C64 editor screen](editorscreen.png)
+
+
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
