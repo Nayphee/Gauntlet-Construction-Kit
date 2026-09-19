@@ -1,6 +1,6 @@
 # Gauntlet Construction Kit and level generator
 
-![Gauntlet Construction Kit on the Commodore 64](editorscreen.png)
+Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
 `gauntkit.prg`, about 8K — that you load and run on the machine (or an
@@ -355,7 +355,12 @@ macOS (`apt install python3-tk` on Debian or Ubuntu).
 
 Saving keeps the level's original wall bytes and appends only what changed,
 so an untouched level saves byte-identical and walls cannot be corrupted by
-an edit — the same scheme the C64 kit uses. Writing back into a `.d64` in
+an edit — the same scheme the C64 kit uses. Changed cells in a straight
+line are appended as one `POINT` and one `DRAW` rather than a `POINT` each:
+a 46-cell wall costs 8 bytes rather than 92, which is the difference
+between a level that fits and one that reports TOO BIG. (Both editors
+saved a cell at a time until a user's bug report; his hex dump of the two
+encodings side by side was the diagnosis.) Writing back into a `.d64` in
 place is deliberately not offered: records change length and re-threading
 the sector chain is a different job. Write the levels to a directory and
 build a fresh disk:
@@ -421,7 +426,7 @@ Where a reading is uncertain the documents say so rather than guessing.
 ## How this was made
 
 The disassembly, the editor, the level generator and the documentation were
-all produced with Claude Opus 5 and Fable 5.1 (Anthropic), working from a disk image of
+all produced with Claude Opus 5 (Anthropic), working from a disk image of
 the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
 also the audit: a generator with no taste needs numbers to argue with.
 

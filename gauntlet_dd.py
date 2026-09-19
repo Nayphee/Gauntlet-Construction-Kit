@@ -258,6 +258,57 @@ def wall_edits(lv):
     return out
 
 
+def edit_runs(edits):
+    """The same edits, as straight runs: (pen, x, y, direction, length).
+
+    A player paints a wall a cell at a time, and saving every cell as its
+    own POINT costs two bytes each - a 46-cell wall came to 92 bytes where
+    a POINT and a DRAW cover it in three, and a level that should have fit
+    reported TOO BIG.  Adjacent same-pen cells in a straight line become
+    one run.  Only horizontal and vertical runs, and never in a direction
+    whose top field equals the pen's, because the decoder would read the
+    DRAW byte as part of the POINT group.
+    """
+    cells = {}
+    for pen, x, y in edits:
+        cells.setdefault(pen, set()).add((x, y))
+    runs = []
+    for pen, left in cells.items():
+        pf = pen >> 5
+        # a direction to draw in, whose field is not the pen's
+        horiz = 'E' if DIR_INDEX['E'] != pf else 'W'
+        vert = 'S' if DIR_INDEX['S'] != pf else 'N'
+        left = set(left)
+        while left:
+            c = min(left)
+            best, bd = [c], horiz
+            for d in (horiz, vert):
+                dx, dy = {'E': (1, 0), 'W': (-1, 0), 'S': (0, 1), 'N': (0, -1)}[d]
+                run, p = [], c
+                while p in left:
+                    run.append(p)
+                    p = (p[0] + dx, p[1] + dy)
+                if len(run) > len(best):
+                    best, bd = run, d
+            runs.append((pen, best[0][0], best[0][1], bd, len(best)))
+            left -= set(best)
+    return runs
+
+
+def runs_to_bytes(runs):
+    """Encode runs as POINT + DRAW pairs.  A run of one is a bare POINT.
+
+    Goes through encode_vectors so the DRAW byte is built the one way the
+    decoder reads it: the POINT plots the first cell and DRAW n plots n
+    more.  Hand-rolling the byte here plotted one cell too many."""
+    cmds = []
+    for pen, x, y, d, n in runs:
+        cmds.append(('POINT', pen, x, y))
+        if n > 1:
+            cmds.append(('DRAW', d, n - 1))
+    return encode_vectors(cmds)
+
+
 def objects_from_grid(lv):
     """Which cells the object layer must write, given the grid and the
     level's vector bytes.
@@ -279,9 +330,12 @@ def save_patched(lv, load_addr=0x0A00):
     whose walls have been changed need the full encoder instead."""
     # walls first: any cell the editor changed becomes an appended POINT
     edits = wall_edits(lv)
-    base_vec = lv.vec + b''.join(bytes([p | x, p | y]) for p, x, y in edits)
-    sep = lv.vec + bytes([0x60, 0x60]) + \
-        b''.join(bytes([p | x, p | y]) for p, x, y in edits)
+    chained = runs_to_bytes(edit_runs(edits))
+    bare = b''.join(bytes([p | x, p | y]) for p, x, y in edits)
+    base_vec = lv.vec + chained
+    sep = lv.vec + bytes([0x60, 0x60]) + chained
+    base_bare = lv.vec + bare
+    sep_bare = lv.vec + bytes([0x60, 0x60]) + bare
 
     # Candidate vector sections. The original is tried first so an unedited
     # save is byte-identical. If the dispatcher's lookahead makes the wall
@@ -289,10 +343,10 @@ def save_patched(lv, load_addr=0x0A00):
     # both plot floor, and their top fields are below $80, so they can never
     # match a leading skip byte. The final group then resolves without the
     # decoder ever needing to look at the object section.
-    vecs = [base_vec, sep]
+    vecs = [base_vec, sep, base_bare, sep_bare]
     floor = next((i for i in range(MAP_SIZE) if lv.grid[i] == 0x00), None)
     if floor is not None:
-        for v0 in (base_vec, sep):
+        for v0 in (base_vec, sep, base_bare, sep_bare):
             for pen in (0x00, 0x60):
                 if v0 and (v0[-1] & 0xE0) == pen:
                     continue

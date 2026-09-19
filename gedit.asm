@@ -132,6 +132,13 @@ pbuf    byte 0,0,0,0,0,0,0,0    ; one panel row under construction
 dirty   byte 0                  ; 1 once the map has been painted; cleared
                                 ; by BASIC on load, new and a good save
 welen   byte 0                  ; bytes used in weblk (2 per wall edit)
+rx      byte 0                  ; run merging: x, y and count beyond first
+ry      byte 0
+rn      byte 0
+rdx     byte 0                  ; and the step being tried
+rdy     byte 0
+rfirst  byte 0                  ; weblk offset of the run's first entry
+ovf     byte 0                  ; set when apbyt had to drop a byte
 noopc   byte 0,0                ; column,row the no-op POINT targets
 gap     byte 0                  ; pending skip count while encoding
 gaphi   byte 0
@@ -537,39 +544,174 @@ encbig  lda #1                  ; too big: tell the caller, write nothing
 ; a trailing no-op to add would carry it to 256, which wraps to zero and
 ; throws the whole wall layout away: the record still saved, 254 bytes
 ; shorter, with every wall gone.  Refuse instead.
-apvec   lda veclen
-        clc
-        adc welen
-        bcs apbig               ; past 255 before the no-op even goes on
-        adc #2
-        bcs apbig
+; No size check up front.  It used to add the raw edit list to veclen and
+; refuse if that passed 255 - but the list is merged as it is copied, so a
+; 46-cell wall that costs six bytes was being refused for the 92 it would
+; have cost unmerged.  apbyt guards the ceiling byte by byte instead, and
+; sets ovf; the caller reads it at the end.
+apvec   lda #0
+        sta ovf
         lda veclen
         sta buf+3
         jsr fndcel              ; pick a cell the object layer will cover
         lda welen
-        beq apnoop              ; no wall edits: just the trailing no-op
-        jsr lastop              ; would the first edit join the last group?
+        bne apsome
+        jmp apnoop              ; no wall edits: just the trailing no-op
+apsome  jsr lastop              ; would the first edit join the last group?
         sta tmp2
         lda weblk
         and #$e0
         cmp tmp2
         bne apcopy
         jsr putnop              ; yes - separate them first
+;-----------------------------------------------------------------------
+; Copy the wall edits out, merging runs.  Each logged edit is a POINT pair,
+; two bytes, and a wall painted a cell at a time used to save as one POINT
+; per cell: a 46-cell wall cost 92 bytes where one POINT and one DRAW cover
+; it in three, and a level that should have fit reported TOO BIG.  Only
+; plain walls ($E0) merge, and only eastward runs on one row: that is the
+; common case, and an eastward DRAW has field 2, which no wall pen shares,
+; so the decoder never folds it into the POINT group.  Consumed entries
+; are flagged in the page at $9F00, indexed by their byte offset.
+;-----------------------------------------------------------------------
 apcopy  ldx #0
-apc1    lda weblk,x
-        jsr apbyt
+        txa
+apcl0   sta $9f00,x             ; clear the consumed flags
         inx
-        cpx welen
-        bne apc1
+        bne apcl0
+        ldx #0
+apc1    cpx welen
+        bne apc1a
+        jmp apnoop
+apc1a   lda $9f00,x
+        beq apc1b
+        jmp apc2                ; already folded into an earlier run
+apc1b   stx rfirst              ; lastop and putnop both clobber x
+        jsr lastop              ; would this POINT join the last group?
+        sta tmp2
+        ldx rfirst
+        lda weblk,x
+        and #$e0
+        cmp tmp2
+        bne apc1c
+        jsr putnop              ; yes: a no-op first
+        ldx rfirst
+apc1c   lda weblk,x
+        jsr apbyt               ; the POINT, both bytes
+        lda weblk+1,x
+        jsr apbyt
+        lda weblk,x
+        and #$e0
+        cmp #$e0
+        beq apc2w
+        jmp apc2                ; not a plain wall: leave it a POINT
+apc2w   lda weblk,x
+        and #$1f
+        sta rx
+        lda weblk+1,x
+        and #$1f
+        sta ry
+        lda #0
+        sta rn
+        lda #1                  ; try east first: dx=1, dy=0
+        sta rdx
+        lda #0
+        sta rdy
+        jsr aprun
+        lda rn
+        bne apc5
+        ldx rfirst              ; nothing east: back to the start cell -
+        lda weblk,x             ; the probe advanced rx - and try south
+        and #$1f
+        sta rx
+        lda weblk+1,x
+        and #$1f
+        sta ry
+        lda #0
+        sta rdx
+        lda #1
+        sta rdy
+        jsr aprun
+        lda rn
+        bne apc5
+        ldx rfirst
+        jmp apc2                ; a run of one stays a bare POINT
+apc5    sec
+        sbc #1
+        ldy rdy
+        beq apc5e
+        ora #$80                ; DRAW south, count-1 (field 4)
+        bne apc5w
+apc5e   ora #$40                ; DRAW east, count-1 (field 2)
+apc5w   jsr apbyt
+        ldx rfirst
+apc2    inx
+        inx
+        jmp apc1
+
+; ---- extend the run at (rx,ry) by (rdx,rdy) through the logged edits,
+;      consuming each cell found and counting it in rn
+aprun   lda rx
+        clc
+        adc rdx
+        sta rx
+        lda ry
+        clc
+        adc rdy
+        sta ry
+        lda rx
+        cmp #32
+        bcs aprund
+        lda ry
+        cmp #32
+        bcs aprund
+        ldy #0
+apru1   cpy welen
+        beq aprund
+        lda $9f00,y
+        bne apru2
+        cpy rfirst
+        beq apru2
+        lda rx
+        ora #$e0
+        cmp weblk,y
+        bne apru2
+        lda weblk+1,y
+        and #$1f
+        cmp ry
+        bne apru2
+        lda #1
+        sta $9f00,y
+        inc rn
+        lda rn
+        cmp #32
+        bcs aprund
+        jmp aprun
+apru2   iny
+        iny
+        jmp apru1
+aprund  rts
+
 apnoop  jsr putnop
+        lda ovf
+        bne apbig
         clc                     ; carry clear: the caller may go on
         rts
 apbig   sec                     ; carry set: no room for the wall edits
         rts
 
-; append A to the vector section, bumping veclen
+; append A to the vector section, bumping veclen.  The section's length
+; is one byte, so at 255 there is no room: note the overflow and drop the
+; byte rather than wrap veclen to zero and corrupt the record.
 apbyt   pha
-        lda #<buf
+        lda buf+3
+        cmp #255
+        bcc apbyt1
+        pla
+        lda #1
+        sta ovf
+        rts
+apbyt1  lda #<buf
         clc
         adc #4
         adc buf+3
@@ -1629,13 +1771,13 @@ pnsc1   lda lbsc0,x
         dex
         bpl pnsc1
         jmp pnscz
-pnscb   ldx #4
+pnscb   ldx #3                  ; VERT is four characters
 pnsc2   lda lbsc1,x
         sta pbuf,x
         dex
         bpl pnsc2
         jmp pnscz
-pnscc   ldx #3
+pnscc   ldx #4                  ; HORIZ is five
 pnsc3   lda lbsc2,x
         sta pbuf,x
         dex
@@ -1865,8 +2007,8 @@ lbexn   byte $0e,$0f,$12,$0d,$01,$0c
 lbexr   byte $12,$01,$0e,$04,$0f,$0d
 lbscr   byte $13,$03,$12,$0f,$0c,$0c,$3a
 lbsc0   byte $0e,$0f,$0e,$05
-lbsc1   byte $08,$0f,$12,$09,$1a
-lbsc2   byte $16,$05,$12,$14
+lbsc1   byte $16,$05,$12,$14            ; bit 6: VERT
+lbsc2   byte $08,$0f,$12,$09,$1a       ; bit 7: HORIZ
 lbsc3   byte $02,$0f,$14,$08
 lbdraw  byte $04,$12,$01,$17,$20,$0f,$06,$06
 lbdron  byte $04,$12,$01,$17,$20,$0f,$0e,$20
@@ -2179,8 +2321,14 @@ doexit  lda #$04                ; e - one exit only
         jmp dobit
 
 ; Bits 6 and 7 are adjacent, so the two scroll limits are one setting with
-; four states rather than two switches: none, wide, tall, both.  Adding
-; $40 to the pair steps it and wraps of its own accord.
+; four states: none, vert, horiz, both.  Adding $40 steps it and wraps.
+;
+; Which bit is which axis was wrong here at first.  $9354 tests bit 7 and
+; clamps $87BC to $10 when clear; $937A tests bit 6 and clamps $87BE to
+; $17.  $AF78 shows what those two are: $87BC feeds the column with a
+; width of 16, $87BE the row with a height of 10.  The map is 32 wide, so
+; a 16-column view scrolls 16 - hence the $10 clamp on the horizontal.
+; Bit 6 is therefore vertical and bit 7 horizontal, not the reverse.
 doscrl  lda buf+1
         clc
         adc #$40
