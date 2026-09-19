@@ -41,6 +41,7 @@ gridend = $9c                   ; high byte of grid + $400
 buf     = $9d00
 bufcap  = $9f                   ; high byte of buf + 512, the write guard
 pancol  = 11                    ; side panel colour; it is drawn reverse video
+cmap    = $9000                 ; cell -> edit-list offset + 1, for run merging
 base    = $9400                 ; the map as loaded, for striking undone edits
 weblk   = $9c00                 ; wall-edit list: POINT pairs appended to the
                                 ; vector section, 250 bytes = 125 edits max
@@ -139,6 +140,14 @@ rn      byte 0
 rdx     byte 0                  ; and the step being tried
 rdy     byte 0
 rfirst  byte 0                  ; weblk offset of the run's first entry
+rpen    byte 0                  ; the run's pen, and its field
+rpf     byte 0
+rd      byte 0                  ; direction being tried, 0-7
+rbest   byte 0                  ; longest run found, and its direction
+rdir    byte 0
+joybit  byte 0                  ; joystick: last bits read, last event jiffy,
+joylst  byte 0                  ; and the axis toggle for diagonals
+joyalt  byte 0
 ovf     byte 0                  ; set when apbyt had to drop a byte
 noopc   byte 0,0                ; column,row the no-op POINT targets
 gap     byte 0                  ; pending skip count while encoding
@@ -575,19 +584,49 @@ apsome  jsr lastop              ; would the first edit join the last group?
 ; so the decoder never folds it into the POINT group.  Consumed entries
 ; are flagged in the page at $9F00, indexed by their byte offset.
 ;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+; Copy the wall edits out, merging runs.  Each logged edit is a POINT
+; pair; a straight line of them in any of the eight directions goes out as
+; one POINT and one DRAW.  Every pen merges - wall, trap-wall, both doors
+; and floor - except that a DRAW is never emitted in the direction whose
+; field equals the pen's, since the decoder would fold it into the POINT
+; group.  A cell-indexed map at $9000 (entry offset + 1, or 0) makes each
+; neighbour probe one read; scanning the list for every entry was
+; quadratic and cost a third of a second a keystroke at 120 edits.
+;-----------------------------------------------------------------------
 apcopy  ldx #0
         txa
-apcl0   sta $9f00,x             ; clear the consumed flags
+apcl0   sta cmap,x              ; clear the cell map, four pages
+        sta cmap+$100,x
+        sta cmap+$200,x
+        sta cmap+$300,x
+        sta $9f00,x             ; and the consumed flags
         inx
         bne apcl0
         ldx #0
+apcm1   cpx welen               ; fill the cell map from the list
+        beq apcm9
+        lda weblk+1,x
+        and #$1f
+        jsr cmaddr              ; ry in A -> cmlo/cmhi = row start
+        lda weblk,x
+        and #$1f
+        tay
+        txa
+        clc
+        adc #1                  ; entry offset + 1, so 0 means none
+        sta (mlo),y
+        inx
+        inx
+        jmp apcm1
+apcm9   ldx #0
 apc1    cpx welen
         bne apc1a
         jmp apnoop
 apc1a   lda $9f00,x
         beq apc1b
-        jmp apc2                ; already folded into an earlier run
-apc1b   stx rfirst              ; lastop and putnop both clobber x
+        jmp apc2                ; folded into an earlier run
+apc1b   stx rfirst
         jsr lastop              ; would this POINT join the last group?
         sta tmp2
         ldx rfirst
@@ -595,103 +634,163 @@ apc1b   stx rfirst              ; lastop and putnop both clobber x
         and #$e0
         cmp tmp2
         bne apc1c
-        jsr putnop              ; yes: a no-op first
+        jsr putnop
         ldx rfirst
 apc1c   lda weblk,x
-        jsr apbyt               ; the POINT, both bytes
+        jsr apbyt               ; the POINT
         lda weblk+1,x
         jsr apbyt
         lda weblk,x
         and #$e0
-        cmp #$e0
-        beq apc2w
-        jmp apc2                ; not a plain wall: leave it a POINT
-apc2w   lda weblk,x
-        and #$1f
-        sta rx
-        lda weblk+1,x
-        and #$1f
-        sta ry
+        sta rpen                ; this run's pen
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        sta rpf                 ; and its field, 0-7
         lda #0
-        sta rn
-        lda #1                  ; try east first: dx=1, dy=0
-        sta rdx
+        sta rbest               ; longest run found so far
+        sta rdir
         lda #0
-        sta rdy
-        jsr aprun
+        sta rd                  ; try each of the eight directions
+apdir   lda rd
+        cmp rpf
+        beq apdirn              ; same field as the pen: the decoder would
+        jsr aplen               ; misread the DRAW, so never draw this way
         lda rn
-        bne apc5
-        ldx rfirst              ; nothing east: back to the start cell -
-        lda weblk,x             ; the probe advanced rx - and try south
-        and #$1f
-        sta rx
-        lda weblk+1,x
-        and #$1f
-        sta ry
-        lda #0
-        sta rdx
-        lda #1
-        sta rdy
-        jsr aprun
-        lda rn
+        cmp rbest
+        bcc apdirn
+        beq apdirn
+        sta rbest
+        lda rd
+        sta rdir
+apdirn  inc rd
+        lda rd
+        cmp #8
+        bcc apdir
+        lda rbest
         bne apc5
         ldx rfirst
         jmp apc2                ; a run of one stays a bare POINT
-apc5    sec
+apc5    lda rdir                ; consume the cells along the best run
+        sta rd
+        jsr aplen
+        jsr apeat
+        lda rbest
+        sec
         sbc #1
-        ldy rdy
-        beq apc5e
-        ora #$80                ; DRAW south, count-1 (field 4)
-        bne apc5w
-apc5e   ora #$40                ; DRAW east, count-1 (field 2)
-apc5w   jsr apbyt
+        sta tmp2
+        lda rdir
+        asl
+        asl
+        asl
+        asl
+        asl
+        ora tmp2                ; DRAW: direction field, count-1
+        jsr apbyt
         ldx rfirst
 apc2    inx
         inx
         jmp apc1
 
-; ---- extend the run at (rx,ry) by (rdx,rdy) through the logged edits,
-;      consuming each cell found and counting it in rn
-aprun   lda rx
+; ---- cmlo/cmhi = start of row A in the cell map
+cmaddr  pha
+        lsr
+        lsr
+        lsr
         clc
-        adc rdx
+        adc #>cmap
+        sta mhi
+        pla
+        and #7
+        asl
+        asl
+        asl
+        asl
+        asl
+        sta mlo
+        rts
+
+; ---- rn = how many logged cells of this run's pen lie beyond the start
+;      in direction rd (32 at most), without consuming them
+aplen   lda #0
+        sta rn
+        ldx rfirst
+        lda weblk,x
+        and #$1f
+        sta rx
+        lda weblk+1,x
+        and #$1f
+        sta ry
+apl1    ldx rd
+        lda rx
+        clc
+        adc dirdx,x
+        cmp #32
+        bcs apl9                ; off the map either side (wraps negative)
         sta rx
         lda ry
         clc
-        adc rdy
+        adc dirdy,x
+        cmp #32
+        bcs apl9
         sta ry
-        lda rx
-        cmp #32
-        bcs aprund
-        lda ry
-        cmp #32
-        bcs aprund
-        ldy #0
-apru1   cpy welen
-        beq aprund
-        lda $9f00,y
-        bne apru2
-        cpy rfirst
-        beq apru2
-        lda rx
-        ora #$e0
-        cmp weblk,y
-        bne apru2
-        lda weblk+1,y
-        and #$1f
-        cmp ry
-        bne apru2
-        lda #1
-        sta $9f00,y
+        jsr cmaddr
+        ldy rx
+        lda (mlo),y
+        beq apl9                ; not logged
+        sec
+        sbc #1
+        tax
+        lda $9f00,x
+        bne apl9                ; already in another run
+        lda weblk,x
+        and #$e0
+        cmp rpen
+        bne apl9                ; a different pen
         inc rn
         lda rn
         cmp #32
-        bcs aprund
-        jmp aprun
-apru2   iny
-        iny
-        jmp apru1
-aprund  rts
+        bcc apl1
+apl9    rts
+
+; ---- consume rn cells along rd from the run's start
+apeat   ldx rfirst
+        lda weblk,x
+        and #$1f
+        sta rx
+        lda weblk+1,x
+        and #$1f
+        sta ry
+        lda rn
+        sta tmp2
+ape1    lda tmp2
+        beq ape9
+        dec tmp2
+        ldx rd
+        lda rx
+        clc
+        adc dirdx,x
+        sta rx
+        lda ry
+        clc
+        adc dirdy,x
+        sta ry
+        jsr cmaddr
+        ldy rx
+        lda (mlo),y
+        sec
+        sbc #1
+        tax
+        lda #1
+        sta $9f00,x
+        jmp ape1
+ape9    rts
+
+; direction deltas in field order: N NE E SE S SW W NW
+dirdx   byte 0,1,1,1,0,$ff,$ff,$ff
+dirdy   byte $ff,$ff,0,1,1,1,0,$ff
 
 apnoop  jsr putnop
         lda ovf
@@ -969,8 +1068,12 @@ edloop  lda #$00                ; the KERNAL default: only the cursor keys,
                                 ; second press indistinguishable.
         jsr curon
 edwait  jsr $ffe4
+        bne edwkey
+        jsr joyrd               ; no key: a joystick in port 2 counts too
         beq edwait
         sta tmp
+        jmp edwnew              ; it keeps its own rate, so it always acts
+edwkey  sta tmp
         cmp prevky
         bne edwnew              ; a different key always acts at once
         jsr rptfast             ; the same key again.  If the KERNAL repeats
@@ -2514,6 +2617,68 @@ mq      cmp #$51                ; q
         sta $0286
         rts                     ; back to the SYS, or to the boot menu
 
+;-----------------------------------------------------------------------
+; Joystick in port 2, read as if it were the keyboard.  CIA 1 port A at
+; $DC00, active low: bit 0 up, 1 down, 2 left, 3 right, 4 fire.  A
+; direction becomes the matching cursor key, fire becomes space, and a
+; diagonal alternates between its two axes on successive reads so the
+; cursor walks the diagonal.  One read of $DC00 per pass of the input
+; loop costs nothing.  The rate is set by the jiffy clock: no more than
+; one event every JOYRT jiffies, or a held stick would move thousands of
+; cells a second.  Returns the key code in A, or 0 for nothing.
+;-----------------------------------------------------------------------
+JOYRT   = 4                     ; jiffies between events: 15 a second
+joyrd   lda $dc00
+        and #$1f
+        cmp #$1f
+        beq joy0                ; nothing pressed
+        eor #$1f
+        sta joybit              ; active high now
+        lda $a2                 ; jiffies since the last event
+        sec
+        sbc joylst
+        cmp #JOYRT
+        bcc joy0                ; too soon
+        lda $a2
+        sta joylst
+        lda joybit
+        and #$10
+        beq joymv
+        lda #$20                ; fire: space, place the item
+        rts
+joymv   inc joyalt              ; a diagonal alternates axes
+        lda joyalt
+        and #1
+        bne joyvf
+        jsr joyh                ; even: horizontal first, then vertical
+        bne joy9
+        jmp joyv
+joyvf   jsr joyv                ; odd: vertical first
+        bne joy9
+        jmp joyh
+joyv    lda joybit
+        and #1
+        beq joyv2
+        lda #$91                ; up
+        rts
+joyv2   lda joybit
+        and #2
+        beq joy0
+        lda #$11                ; down
+        rts
+joyh    lda joybit
+        and #4
+        beq joyh2
+        lda #$9d                ; left
+        rts
+joyh2   lda joybit
+        and #8
+        beq joy0
+        lda #$1d                ; right
+        rts
+joy0    lda #0
+joy9    rts
+
 ; ---- both help pages, a keypress between them
 helpsc  lda #<helptab           ; ? starts at the instructions: the title
         sta srclo               ; page is only worth seeing on the way in
@@ -2725,7 +2890,12 @@ helptab byte $28,$20,$20,$12,$2a,$2a,$2a,$2a
         byte $20,$2b,$2d,$31,$20,$20,$20,$20
         byte $20,$20,$20,$53,$48,$46,$54,$2b
         byte $2d,$20,$4c,$45,$56,$45,$4c,$20
-        byte $2b,$2d,$31,$30,$0d,$01,$0d,$2a
+        byte $2b,$2d,$31,$30,$0d,$27,$4a,$4f
+        byte $59,$53,$54,$49,$43,$4b,$20,$49
+        byte $4e,$20,$50,$4f,$52,$54,$20,$32
+        byte $3a,$20,$4d,$4f,$56,$45,$2c,$20
+        byte $46,$49,$52,$45,$20,$3d,$20,$50
+        byte $4c,$41,$43,$45,$0d,$01,$0d,$2a
         byte $12,$50,$41,$4e,$45,$4c,$92,$20
         byte $20,$20,$58,$30,$30,$20,$59,$30
         byte $30,$20,$3d,$20,$43,$55,$52,$53

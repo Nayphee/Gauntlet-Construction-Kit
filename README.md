@@ -1,7 +1,5 @@
 # Gauntlet Construction Kit and level generator
 
-![Commodore 64 editor](editorscreen.png)
-
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -197,7 +195,10 @@ are what the batched disk stores as files.
 ## The editor
 
 This is the C64 half: `gauntkit.prg` loads with `LOAD"*",8` and runs with
-`RUN` on the machine itself. It is pure 6502 machine code behind a one-line
+`RUN` on the machine itself. A joystick in port 2 works alongside the
+keyboard: the stick moves the cursor, including diagonally, and fire
+places the selected item. It is read once per pass of the input loop, so
+it costs nothing. It is pure 6502 machine code behind a one-line
 BASIC stub, and edits any level file on a Gauntlet or Deeper Dungeons disk
 that stores them as separate `LEVEL nnn` files. Press `?` for the key list.
 
@@ -361,9 +362,12 @@ macOS (`apt install python3-tk` on Debian or Ubuntu).
 Saving keeps the level's original wall bytes and appends only what changed,
 so an untouched level saves byte-identical and walls cannot be corrupted by
 an edit — the same scheme the C64 kit uses. Changed cells in a straight
-line are appended as one `POINT` and one `DRAW` rather than a `POINT` each:
-a 46-cell wall costs 8 bytes rather than 92, which is the difference
-between a level that fits and one that reports TOO BIG. (Both editors
+line — any of the eight directions, any pen — are appended as one `POINT`
+and one `DRAW` rather than a `POINT` each: a 46-cell wall costs 8 bytes
+rather than 92, which is the difference between a level that fits and one
+that reports TOO BIG. The line is found at save time from the cells you
+painted, so it makes no difference how the cursor got there; a diagonal
+painted a cell at a time with the cursor keys still saves as one `DRAW`. (Both editors
 saved a cell at a time until a user's bug report; his hex dump of the two
 encodings side by side was the diagnosis.) Writing back into a `.d64` in
 place is deliberately not offered: records change length and re-threading

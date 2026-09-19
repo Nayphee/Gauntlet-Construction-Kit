@@ -19,6 +19,28 @@ build. See **Two builds** at the end.
 
 ## What changed most recently
 
+**19 September 2026** — both editors now save painted walls as runs.
+Cells changed in a straight line go out as one `POINT` plus one `DRAW`
+rather than a `POINT` per cell: a 46-cell wall cost 92 bytes and reported
+TOO BIG, and now costs 8. Reported by a user with a hex dump of the two
+encodings side by side.
+
+Same day: erasing a painted wall now strikes the edit from the C64 kit's
+record instead of logging an erase on top of it, so the byte count comes
+back down and TOO BIG! clears. And once over the ceiling, nothing more
+paints until something is erased.
+
+**20 September 2026** — the run merge covers all eight directions and
+every pen, not just eastward and southward walls, and it is linear: a
+cell-indexed map replaces the scan of the list for every entry, which was
+quadratic and had made the panel take a third of a second per keystroke
+at 120 edits. A tenth now, most of it the encode itself.
+
+Also: a joystick in port 2 moves the cursor and places items. Read once
+per pass of the input loop, rate-limited by the jiffy clock to fifteen
+events a second, diagonals alternating axes.
+
+
 Four readings in these notes were corrected in September 2026, each from
 the game's code after play experience contradicted the earlier text:
 
