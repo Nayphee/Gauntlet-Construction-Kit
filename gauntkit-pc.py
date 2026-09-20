@@ -19,6 +19,8 @@ Keys:
     click/drag  paint
     right-click pick up the tile under the cursor
     u           undo one cell
+    v           colour cells by section: vector yellow, objects cyan,
+                unsaved wall edits magenta
     s           save        r  revert this level
     [ / ]       previous / next level
     w           write every level out to a directory
@@ -46,6 +48,7 @@ class App:
         self.idx = 0
         self.code = 0x10
         self.painting = False
+        self.show_layers = False        # v: colour cells by section
         root.title('gauntkit-pc')
 
         wrap = tk.Frame(root, bg='#101010')
@@ -106,6 +109,7 @@ class App:
         tk.Label(side, text=('click paint  right-click pick\n'
                              'u undo   s save   r revert\n'
                              '[ ] level   w write all\n'
+                             'v show sections (vector/objects)\n'
                              'click a setting to change it'),
                  font=('TkFixedFont', 9), justify='left',
                  bg='#101010', fg='#606060', anchor='w').pack(fill='x',
@@ -160,33 +164,48 @@ class App:
         self.ed = E.Editor(self.store, self.nums[self.idx])
         self.redraw()
 
-    def draw_cell(self, x, y):
+    LAYER_BG = {'v': '#8a8a2a', 'o': '#2a8a8a', 'e': '#8a2a8a', '': '#202020'}
+
+    def draw_cell(self, x, y, layer=None):
         code = self.ed.at(x, y)
-        bg = self.colour(code)
+        if self.show_layers:
+            # the record's two sections, as the hex dump colours them:
+            # vector (the turtle's walls) yellow, object overlay cyan,
+            # and this session's unsaved wall edits magenta
+            if layer is None:
+                layer = self.ed.layers()[y * E.W + x]
+            bg = self.LAYER_BG[layer]
+        else:
+            bg = self.colour(code)
         self.canvas.itemconfig(self.cells[y][x], fill=bg)
         self.canvas.itemconfig(self.marks[y][x],
                                text=E.tile_glyph(code), fill=self._ink(bg))
 
     def redraw(self):
+        layers = self.ed.layers() if self.show_layers else None
         for y in range(E.H):
             for x in range(E.W):
-                self.draw_cell(x, y)
+                self.draw_cell(x, y, layers[y * E.W + x] if layers else None)
         self.status()
 
     def status(self):
         n = self.nums[self.idx]
         sz = self.ed.size()
+        split = self.ed.sizes()
         c = self.ed.counts()
         self.title.config(text='LEVEL %03d%s' % (n, ' *' if self.ed.dirty
                                                  else ''))
         self.info.config(text=(
             'bytes   %s / %d\n'
+            'vector  %-4s objs   %s\n'
             'walls   %-4d doors  %d\n'
             'monst   %-4d gens   %d\n'
             'gold    %-4d food   %d\n'
             'keys    %-4d magic  %d\n'
             'pen     %s %s'
             % ('%d' % sz if sz is not None else '--', E.MAX_RECORD,
+               '%d' % split[0] if split else '--',
+               '%d' % split[1] if split else '--',
                c['walls'], c['doors'], c['monsters'], c['generators'],
                c['treasure'], c['food'], c['keys'], c['magic'],
                E.tile_glyph(self.code), E.tile_name(self.code))))
@@ -255,6 +274,9 @@ class App:
         elif k == 'u':
             if self.ed.undo_one():
                 self.redraw()
+        elif k == 'v':
+            self.show_layers = not self.show_layers
+            self.redraw()
         elif k == 'r':
             self.ed.revert()
             self.redraw()

@@ -309,6 +309,40 @@ class Editor:
         except ValueError:
             return None
 
+    def layers(self):
+        """Which section each cell would come from if saved now.
+
+        Returns a 1024-entry list: 'v' for a cell the vector section draws
+        (the turtle's walls, doors, trap-walls), 'o' for one the object
+        overlay puts there, '' for floor.  A level record is two sections
+        and it helps to see them: a wall that came from the overlay costs
+        more than one the turtle drew, and a shape that reads as one wall
+        may be half of each.
+        """
+        base = G.vector_only_grid(self.lv)
+        out = []
+        for i in range(W * H):
+            t = self.lv.grid[i]
+            if t == 0:
+                out.append('')
+            elif 0x13 <= t <= 0x7F:
+                out.append('o')
+            elif base[i] == t:
+                out.append('v')
+            else:
+                out.append('o' if not (0 < t < 0x13 or t == 0x90) else 'e')
+        return out
+
+    def sizes(self):
+        """(vector bytes, object bytes) the level would save as, or None."""
+        try:
+            data = G.save_patched(self.lv)[2:]
+        except ValueError:
+            return None
+        vec = data[3]
+        total = data[0] | ((data[2] >> 7) << 8)
+        return vec, total - 4 - vec
+
     def counts(self):
         g = self.lv.grid
         c = {}

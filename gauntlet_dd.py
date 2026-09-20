@@ -295,6 +295,129 @@ def edit_runs(edits):
     return runs
 
 
+DIR8 = [('N', 0, -1), ('NE', 1, -1), ('E', 1, 0), ('SE', 1, 1),
+        ('S', 0, 1), ('SW', -1, 1), ('W', -1, 0), ('NW', -1, -1)]
+
+
+def edit_polylines(edits, wild=()):
+    """The edits as polylines: one POINT, then a DRAW per straight leg.
+
+    A snake wall - right, down, right, up - is one shape to the person
+    who painted it, and the format can say so: the turtle keeps its
+    position after a DRAW, so the next DRAW carries on from the corner.
+    Emitting a fresh POINT at every corner cost a 31-cell snake 17 bytes
+    where a polyline is 6.
+
+    Two rules keep the decoder honest.  A DRAW's direction field must
+    differ from the pen's field, or the byte is folded into the POINT's
+    group; and consecutive DRAWs must differ in field, or they group as
+    POINT bytes.  A leg that would repeat the previous direction - only
+    possible past 32 cells - starts a new POINT instead.
+    """
+    # Doors are one pen class: at $C81E a DRAW re-orients a door pen to
+    # its heading, so a leg going N or S draws vertical doors and one
+    # going E or W horizontal ones, whichever pen the POINT had.  Atari
+    # draws a staircase of alternating doors as one polyline of N and W
+    # legs.  Keying doors by pen made every horizontal door in such a
+    # staircase its own POINT: 158 on level 27 where Atari uses 28.
+    DOOR = 'door'
+    cells = {}
+    door_pen = {}
+    for pen, x, y in edits:
+        key = DOOR if pen in (0x40, 0x80) else pen
+        cells.setdefault(key, set()).add((x, y))
+        if key == DOOR:
+            door_pen[(x, y)] = pen
+    wild = set(wild)
+    cmds = []
+    for key, allc in cells.items():
+        left = set(allc)                    # still to be covered
+        through = allc | wild
+        while left:
+            def degree(c):
+                return sum(1 for _, dx, dy in DIR8 if (c[0] + dx, c[1] + dy) in allc)
+            start = min(left, key=lambda c: (degree(c), c))
+            pen = door_pen[start] if key == DOOR else key
+            pf = pen >> 5
+            cmds.append(('POINT', pen, start[0], start[1]))
+            left.discard(start)
+            here = start
+            last_field = pf
+            while True:
+                best, bd, bf, bnew = [], None, None, 0
+                for f, (name, dx, dy) in enumerate(DIR8):
+                    if f == last_field:
+                        continue
+                    # A door leg draws the kind of door its heading
+                    # makes.  It may still cross a door of the other
+                    # kind - drawing it wrong - as long as that cell is
+                    # not yet covered: a later leg will draw it right,
+                    # and the last command wins.  Atari runs the whole
+                    # left edge of level 27 as vertical doors and fixes
+                    # the horizontal ones afterwards.  A cell already
+                    # covered correctly must not be crossed wrongly.
+                    need = WALL_REORIENT[f >> 1] if key == DOOR else None
+                    leg, p = [], (here[0] + dx, here[1] + dy)
+                    while p in through and len(leg) < 32:
+                        if need is not None and p in allc and door_pen[p] != need \
+                                and p not in left:
+                            break
+                        leg.append(p)
+                        p = (p[0] + dx, p[1] + dy)
+                    # bind need now: a closure over the loop variable
+                    # would see whichever direction was tried last
+                    good = (lambda c, n=need: door_pen.get(c) == n) if need is not None \
+                        else (lambda c: True)
+                    while leg and not (leg[-1] in left and good(leg[-1])):
+                        leg.pop()
+                    new = sum(1 for c in leg if c in left and good(c))
+                    if new > bnew or (new == bnew and new and len(leg) < len(best)):
+                        best, bd, bf, bnew = leg, name, f, new
+                        bgood = good
+                if not best:
+                    break
+                cmds.append(('DRAW', bd, len(best)))
+                left -= {c for c in best if bgood(c)}
+                here = best[-1]
+                last_field = bf
+    return cmds
+
+
+def separate_groups(cmds, floor):
+    """Insert no-op POINTs where the decoder would misgroup.
+
+    Consecutive bytes with the same top field form a group, and in a group
+    of odd length the decoder takes the byte three from the end as a
+    DRAW.  So a DRAW of field F followed by a POINT whose pen is F forms
+    a three-byte group that reads correctly - but only if the group ends
+    there.  Another POINT of pen F makes it five bytes, and the DRAW is
+    now read as POINT data.  The guard is the C64 kit's putnop: before a
+    POINT whose pen field matches the DRAW before it, plot a floor cell
+    with a pen of a different field.  Floor pens $00, $60 and $A0 have
+    fields 0, 3 and 5, so one always differs.  `floor` is a cell that is
+    floor in the final map, so the no-op changes nothing.
+    """
+    out = []
+    last_draw_field = None
+    for i, c in enumerate(cmds):
+        if c[0] == 'POINT':
+            pf = c[1] >> 5
+            if last_draw_field is not None and pf == last_draw_field:
+                # [DRAW, POINT] is a valid three-byte group on its own;
+                # it breaks only if the group continues with another
+                # same-field POINT
+                nxt = cmds[i + 1] if i + 1 < len(cmds) else None
+                if nxt and nxt[0] == 'POINT' and (nxt[1] >> 5) == pf:
+                    nop_pen = next(p for p in (0x00, 0x60, 0xA0) if (p >> 5) != pf)
+                    out.append(('POINT', nop_pen, floor[0], floor[1]))
+            out.append(c)
+            last_draw_field = None
+        else:
+            out.append(c)
+            last_draw_field = DIR_INDEX[c[1]]
+    return out
+
+
 def runs_to_bytes(runs):
     """Encode runs as POINT + DRAW pairs.  A run of one is a bare POINT.
 
@@ -330,10 +453,13 @@ def save_patched(lv, load_addr=0x0A00):
     whose walls have been changed need the full encoder instead."""
     # walls first: any cell the editor changed becomes an appended POINT
     edits = wall_edits(lv)
+    wild = [(i % W, i // W) for i in range(MAP_SIZE) if 0x13 <= lv.grid[i] <= 0x7F]
+    floor = next(((i % W, i // W) for i in range(MAP_SIZE) if lv.grid[i] == 0), (1, 1))
+    poly = encode_vectors(separate_groups(edit_polylines(edits, wild), floor))
     chained = runs_to_bytes(edit_runs(edits))
     bare = b''.join(bytes([p | x, p | y]) for p, x, y in edits)
-    base_vec = lv.vec + chained
-    sep = lv.vec + bytes([0x60, 0x60]) + chained
+    base_vec = lv.vec + poly
+    sep = lv.vec + bytes([0x60, 0x60]) + poly
     base_bare = lv.vec + bare
     sep_bare = lv.vec + bytes([0x60, 0x60]) + bare
 
@@ -343,10 +469,11 @@ def save_patched(lv, load_addr=0x0A00):
     # both plot floor, and their top fields are below $80, so they can never
     # match a leading skip byte. The final group then resolves without the
     # decoder ever needing to look at the object section.
-    vecs = [base_vec, sep, base_bare, sep_bare]
+    vecs = [base_vec, sep, lv.vec + chained, lv.vec + bytes([0x60, 0x60]) + chained,
+            base_bare, sep_bare]
     floor = next((i for i in range(MAP_SIZE) if lv.grid[i] == 0x00), None)
     if floor is not None:
-        for v0 in (base_vec, sep, base_bare, sep_bare):
+        for v0 in list(vecs):
             for pen in (0x00, 0x60):
                 if v0 and (v0[-1] & 0xE0) == pen:
                     continue

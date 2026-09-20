@@ -19,6 +19,65 @@ build. See **Two builds** at the end.
 
 ## What changed most recently
 
+**21 September 2026** — a full test of the wall compiler, in both editors,
+against the one benchmark that exists: the arcade's 128 levels, redrawn
+from scratch and compared with Atari's own files.
+
+Three faults in the compiler. It forbade a `DRAW` in the pen's own field
+on every leg, when only the byte *before* a `DRAW` matters - so it could
+never draw a trap-wall west, and level 77's spiral came out in 111 pieces
+where Atari uses 29. It treated a cell under an object as a gap, when the
+object layer hides whatever the turtle leaves there - the same spiral has
+118 objects on it. And on the PC it stopped a leg at any cell already
+drawn, when overdraw is free. Fixed, the PC editor draws 118 of the 128
+from scratch at 3% over Atari's size, and is smaller on 33 of them.
+
+One fault in the C64 kit that mattered more: its edit list holds 125
+cells, and the 126th was dropped in silence - on the screen, absent from
+the save. The median arcade level has 238 vector cells. It now refuses,
+puts the cell back, says `EDITS  !` where the byte count goes, and paints
+nothing more until something is erased. Later the same day the list was rebuilt: 512 cells at `$8000`, a
+16-bit length, and a cell map that `welog` keeps current so nothing is
+rebuilt at encode time. With it came three more things the C64 merge had
+lacked - overdraw, a door rule, and a narrower no-op guard. The door rule
+was a game fact the compiler on *both* sides had missed: at `$C81E` a
+door pen re-orients to the heading it is drawn along, so a vertical door
+can only be drawn north or south. On the PC the round-trip check had been
+quietly falling back to bare POINTs on every level with doors. Drawn from
+scratch, the C64 kit now fits 120 of the arcade's 128 levels, against 14
+in the morning, with no wrong cell on any, and the count always the
+save's own length. On equal terms - the same
+cells logged the same way - the two editors' compilers are two points
+apart: C64 +7.6% over Atari's vector sections, PC +5.8%, whole records
++3.8% and +2.0%. An earlier reading had them eight points apart and
+blamed where a polyline starts; measured, the start point made no
+difference at all. The gap was 437 no-ops where 15 are needed - one
+before every same-field POINT, one at the start of every level against
+an empty section, one at the end of every level whether the object byte
+would join it or not. All three are conditional now.
+
+Then the door rule turned out to be half right. Level 27 is a level of
+doors, and Atari draws a staircase of alternating vertical and horizontal
+ones as a single polyline of N and W legs: the re-orientation at `$C81E`
+means the leg's heading chooses the door, whichever pen the POINT had.
+So doors are one pen class, and a leg may even cross a door of the wrong
+kind - drawing it wrong - as long as that cell has not yet been drawn
+right, because a later command wins. Atari runs the whole left edge of
+level 27 as vertical doors and fixes the horizontal ones afterwards.
+Both compilers do this now. Drawn from scratch, the C64 kit fits 124 of
+the arcade's 128 and the PC editor 125. The four the C64 cannot: 21 is a
+few bytes over the 511 record ceiling; 27, 120 and 123 need a vector
+section past 255 bytes, where Atari's hand encoding is 189, 250 and 225.
+Level 27 in particular is 268 bytes here against Atari's 189 - a
+long-spine-then-fix-up structure a greedy compiler does not find.
+
+The panel's byte count is the length of the same encode the save writes,
+so the two cannot disagree; that was checked on every level and they did
+not. A full from-scratch encode costs a third of a second, run only once the
+input is quiet; a third of it went on computing map addresses with five
+shifts per probe until the grid's row table was used instead.
+
+
 **19 September 2026** — both editors now save painted walls as runs.
 Cells changed in a straight line go out as one `POINT` plus one `DRAW`
 rather than a `POINT` per cell: a 46-cell wall cost 92 bytes and reported
@@ -35,6 +94,22 @@ every pen, not just eastward and southward walls, and it is linear: a
 cell-indexed map replaces the scan of the list for every entry, which was
 quadratic and had made the panel take a third of a second per keystroke
 at 120 edits. A tenth now, most of it the encode itself.
+
+Both editors now save a changed shape as a polyline - one POINT, then
+a DRAW per leg - so a snake wall is six bytes rather than a POINT per
+corner. Same reporter, second picture: the PC editor has a layer view
+(`v`) colouring cells by section, and shows the vector/object byte split.
+
+The byte count is now recomputed only when the map has changed, and
+only once the input has been quiet for three jiffies. It used to test
+the "modified since save" flag, which stays set, so after one paint every
+cursor move re-ran the encoder; and it ran after every paint in a
+stroke. A twenty-cell stroke cost three seconds of encoding and now
+costs a fifth of one, all of it after the stroke ends.
+
+Draw mode paints only after a cursor move now. It used to paint after
+every key but four, and DEL was not among the four, so an erase in draw
+mode was painted straight back.
 
 Also: a joystick in port 2 moves the cursor and places items. Read once
 per pass of the input loop, rate-limited by the jiffy clock to fifteen

@@ -1,7 +1,5 @@
 # Gauntlet Construction Kit and level generator
 
-![Commodore 64 editor](editorscreen.png)
-
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -213,7 +211,10 @@ panel spells both out — `EXITS: NORMAL` or `RANDOM`, `SCROLL: HORIZ` and
 so on — rather than abbreviating them to letters. Both editors offer the
 same settings, so a level can be given them on either machine.
 
-The panel shows the byte cost of the level as you work: the format allows
+The kit keeps up to 512 changed wall cells per level — more than any
+arcade level has — so a level can be drawn from an empty map. If the list
+does fill, the panel says `EDITS !` and nothing more paints until
+something is erased. The panel shows the byte cost of the level as you work: the format allows
 511 bytes and a level that will not fit cannot be saved, so the count
 matters. Past the ceiling it reads TOO BIG! and nothing more will paint
 until something is erased; erasing what you painted strikes the edit from
@@ -354,7 +355,10 @@ arcade sets *one exit only* on 33 of its levels — so the PC editor offers
 them. A level edited on the C64 keeps whatever it already had: the save
 path preserves both flag bytes untouched. Click to paint, right-click to pick up
 the tile under the cursor, `[` and `]` to change level, `s` to save, `w` to
-write every level out to a directory. The byte count and the warnings are
+write every level out to a directory. `v` colours the map by which section
+of the record each cell comes from — the vector section's walls in yellow,
+the object overlay in cyan, your unsaved wall edits in magenta — and the
+panel shows the byte split between the two. The byte count and the warnings are
 the same ones the C64 panel shows, because a level still has to fit in 511
 bytes wherever it was edited.
 
@@ -363,9 +367,10 @@ macOS (`apt install python3-tk` on Debian or Ubuntu).
 
 Saving keeps the level's original wall bytes and appends only what changed,
 so an untouched level saves byte-identical and walls cannot be corrupted by
-an edit — the same scheme the C64 kit uses. Changed cells in a straight
-line — any of the eight directions, any pen — are appended as one `POINT`
-and one `DRAW` rather than a `POINT` each: a 46-cell wall costs 8 bytes
+an edit — the same scheme the C64 kit uses. A changed shape is appended as one
+`POINT` and then a `DRAW` per straight leg — a snake wall that goes right,
+down, right, up is `POINT, DRAW, DRAW, DRAW, DRAW`, six bytes for thirty
+cells — rather than a `POINT` per cell: a 46-cell wall costs 8 bytes
 rather than 92, which is the difference between a level that fits and one
 that reports TOO BIG. The line is found at save time from the cells you
 painted, so it makes no difference how the cursor got there; a diagonal

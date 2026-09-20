@@ -41,9 +41,14 @@ gridend = $9c                   ; high byte of grid + $400
 buf     = $9d00
 bufcap  = $9f                   ; high byte of buf + 512, the write guard
 pancol  = 11                    ; side panel colour; it is drawn reverse video
-cmap    = $9000                 ; cell -> edit-list offset + 1, for run merging
+cmap    = $9000                 ; cell -> field+1 of the logged pen, 0 if none
 base    = $9400                 ; the map as loaded, for striking undone edits
-weblk   = $9c00                 ; wall-edit list: POINT pairs appended to the
+weblk   = $8000                 ; wall-edit list, 1K: 512 POINT pairs
+cons    = $8c00                 ; cell -> consumed by a run (merge scratch)
+lstlo   = $57                   ; pointer into the edit list
+lsthi   = $58
+;       (was $9c00, 125 entries - the 126th was dropped in silence)
+;                               ; POINT pairs appended to the
                                 ; vector section, 250 bytes = 125 edits max
 screen  = $0400
 colram  = $d800
@@ -89,6 +94,7 @@ vlen    byte 0
 pen     byte 0
 tmp     byte 0
 tmp2    byte 0
+tmp3    byte 0
 remlo   byte 0
 remhi   byte 0
 objcod  byte 0
@@ -133,7 +139,8 @@ endhi   byte 0                  ; 1 when the level is not from disk
 pbuf    byte 0,0,0,0,0,0,0,0    ; one panel row under construction
 dirty   byte 0                  ; 1 once the map has been painted; cleared
                                 ; by BASIC on load, new and a good save
-welen   byte 0                  ; bytes used in weblk (2 per wall edit)
+welo    byte 0                  ; bytes used in weblk, 16 bits (2 per edit)
+wehi    byte 0
 rx      byte 0                  ; run merging: x, y and count beyond first
 ry      byte 0
 rn      byte 0
@@ -145,10 +152,23 @@ rpf     byte 0
 rd      byte 0                  ; direction being tried, 0-7
 rbest   byte 0                  ; longest run found, and its direction
 rdir    byte 0
+rox     byte 0                  ; where the polyline currently ends
+roy     byte 0
+rlast   byte 0                  ; field of the byte before the next DRAW
+rnew    byte 0                  ; new cells a leg covers; its worth
+rbnew   byte 0                  ; new cells on the best leg so far
+rpf1    byte 0                  ; the run's pen field + 1, as the map stores it
+rwant   byte 0                  ; the map value a cell on the current leg must hold
+lastdrw byte 0                  ; 1 if the last byte emitted was a DRAW, $ff if none
+grp3    byte 0                  ; the section ends in [DRAW F, POINT F]
+gfield  byte 0                  ; and this is F
 joybit  byte 0                  ; joystick: last bits read, last event jiffy,
 joylst  byte 0                  ; and the axis toggle for diagonals
 joyalt  byte 0
 ovf     byte 0                  ; set when apbyt had to drop a byte
+cntdue  byte 0                  ; the count is stale; recount when input is quiet
+wefull  byte 0                  ; the edit list is full; nothing more paints
+cntat   byte 0                  ; jiffy of the last map change
 noopc   byte 0,0                ; column,row the no-op POINT targets
 gap     byte 0                  ; pending skip count while encoding
 gaphi   byte 0
@@ -564,16 +584,10 @@ apvec   lda #0
         lda veclen
         sta buf+3
         jsr fndcel              ; pick a cell the object layer will cover
-        lda welen
-        bne apsome
-        jmp apnoop              ; no wall edits: just the trailing no-op
-apsome  jsr lastop              ; would the first edit join the last group?
-        sta tmp2
-        lda weblk
-        and #$e0
-        cmp tmp2
+        lda welo
+        ora wehi
         bne apcopy
-        jsr putnop              ; yes - separate them first
+        jmp apnoop              ; no wall edits: just the trailing no-op
 ;-----------------------------------------------------------------------
 ; Copy the wall edits out, merging runs.  Each logged edit is a POINT pair,
 ; two bytes, and a wall painted a cell at a time used to save as one POINT
@@ -594,74 +608,150 @@ apsome  jsr lastop              ; would the first edit join the last group?
 ; neighbour probe one read; scanning the list for every entry was
 ; quadratic and cost a third of a second a keystroke at 120 edits.
 ;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+; Copy the wall edits out as polylines.  The cell map (kept by welog)
+; says which cells are logged and with what pen; the consumed map, cleared
+; here, says which a run has already covered.  For each listed cell not
+; yet covered: a POINT, then the longest leg in any of the eight
+; directions, then another from where that ended, until none is left.
+; A leg runs through cells already drawn (overdraw is free) and through
+; cells an object covers (the object layer hides what is left there); it
+; is measured by the new cells it covers and ends on the last of them.
+;-----------------------------------------------------------------------
 apcopy  ldx #0
         txa
-apcl0   sta cmap,x              ; clear the cell map, four pages
-        sta cmap+$100,x
-        sta cmap+$200,x
-        sta cmap+$300,x
-        sta $9f00,x             ; and the consumed flags
+apcl0   sta cons,x              ; nothing consumed yet: four pages
+        sta cons+$100,x
+        sta cons+$200,x
+        sta cons+$300,x
         inx
         bne apcl0
-        ldx #0
-apcm1   cpx welen               ; fill the cell map from the list
-        beq apcm9
-        lda weblk+1,x
-        and #$1f
-        jsr cmaddr              ; ry in A -> cmlo/cmhi = row start
-        lda weblk,x
-        and #$1f
-        tay
-        txa
-        clc
-        adc #1                  ; entry offset + 1, so 0 means none
-        sta (mlo),y
-        inx
-        inx
-        jmp apcm1
-apcm9   ldx #0
-apc1    cpx welen
+        lda #<weblk
+        sta lstlo
+        lda #>weblk
+        sta lsthi
+        lda #$ff
+        sta lastdrw             ; nothing emitted yet
+        lda #0
+        sta grp3
+apc1    lda lstlo               ; at the end of the list?
+        cmp welo
+        bne apc1a
+        lda lsthi
+        sec
+        sbc #>weblk
+        cmp wehi
         bne apc1a
         jmp apnoop
-apc1a   lda $9f00,x
+apc1a   ldy #0
+        lda (lstlo),y
+        and #$1f
+        sta rox                 ; the entry's cell
+        iny
+        lda (lstlo),y
+        and #$1f
+        sta roy
+        lda roy
+        jsr cnaddr
+        ldy rox
+        lda (mlo),y
         beq apc1b
-        jmp apc2                ; folded into an earlier run
-apc1b   stx rfirst
-        jsr lastop              ; would this POINT join the last group?
-        sta tmp2
-        ldx rfirst
-        lda weblk,x
+        jmp apc2                ; already covered by an earlier run
+apc1b   lda #1
+        sta (mlo),y             ; covered now
+        ; A no-op is needed only after a DRAW of this POINT's field: two
+        ; same-field POINTs make an even group, which reads correctly.
+        ; Guarding every same-field POINT cost level 3 twenty-five no-ops
+        ; - fifty bytes - where none was needed.  For the first POINT the
+        ; byte before is the original section's, so its field is checked
+        ; as before; after that lastdrw says whether a DRAW was last.
+        ; [DRAW F, POINT F] is a valid three-byte group by itself; it
+        ; breaks only if another POINT of field F follows, making five.
+        ; So the no-op goes not before the POINT that closes a DRAW's
+        ; group but before the one after it - grp3 remembers that the
+        ; section ends in such a group, and gfield its field.  The C64
+        ; kit used to separate every one: 437 no-ops on the arcade set
+        ; where 31 are needed.
+        ldy #0
+        lda (lstlo),y
         and #$e0
-        cmp tmp2
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        sta tmp3                ; this POINT's field
+        lda lastdrw
+        bpl apc1g
+        lda buf+3
+        beq apc1c               ; an empty section: nothing to separate from
+        jsr lastop              ; nothing emitted yet: the original section
+        lsr                     ; is before us, and we cannot see its shape,
+        lsr                     ; so separate on a field match as before
+        lsr
+        lsr
+        lsr
+        cmp tmp3
         bne apc1c
         jsr putnop
-        ldx rfirst
-apc1c   lda weblk,x
+        jmp apc1c
+apc1g   lda grp3
+        beq apc1i               ; not ending in [DRAW,POINT]: nothing to do
+        lda gfield
+        cmp tmp3
+        bne apc1i
+        jsr putnop              ; a third same-field POINT: separate
+        lda #0
+        sta grp3
+        beq apc1c
+apc1i   lda lastdrw             ; does this POINT close a DRAW's group?
+        beq apc1c
+        lda rlast
+        cmp tmp3
+        bne apc1c
+        sta gfield              ; yes: remember, in case another follows
+        lda #1
+        sta grp3
+        bne apc1k
+apc1c   lda #0
+        sta grp3
+apc1k   lda #0
+        sta lastdrw             ; a POINT is about to be last
+        ldy #0
+        lda (lstlo),y
         jsr apbyt               ; the POINT
-        lda weblk+1,x
+        ldy #1
+        lda (lstlo),y
         jsr apbyt
-        lda weblk,x
+        ldy #0
+        lda (lstlo),y
         and #$e0
-        sta rpen                ; this run's pen
+        sta rpen
         lsr
         lsr
         lsr
         lsr
         lsr
-        sta rpf                 ; and its field, 0-7
-        lda #0
-        sta rbest               ; longest run found so far
-        sta rdir
-        lda #0
-        sta rd                  ; try each of the eight directions
+        sta rlast               ; the POINT's field: the first leg differs
+        clc
+        adc #1
+        sta rpf1                ; field+1, as the cell map stores it
+apdir0  lda #0
+        sta rbest
+        sta rbnew
+        sta rd
 apdir   lda rd
-        cmp rpf
-        beq apdirn              ; same field as the pen: the decoder would
-        jsr aplen               ; misread the DRAW, so never draw this way
-        lda rn
-        cmp rbest
+        cmp rlast
+        beq apdirn              ; would share a group with the byte before
+        jsr apwant              ; the map value a cell on this leg must
+        jsr aplen               ; hold: the pen's field+1, or for a door
+                                ; leg the kind of door this heading draws
+        lda rnew
+        cmp rbnew
         bcc apdirn
-        beq apdirn
+        beq apdirn              ; strictly more new cells wins
+        sta rbnew
+        lda rn
         sta rbest
         lda rd
         sta rdir
@@ -669,13 +759,14 @@ apdirn  inc rd
         lda rd
         cmp #8
         bcc apdir
-        lda rbest
+        lda rbnew
         bne apc5
-        ldx rfirst
-        jmp apc2                ; a run of one stays a bare POINT
-apc5    lda rdir                ; consume the cells along the best run
+        jmp apc2                ; no leg from here: this polyline is done
+apc5    lda rdir
         sta rd
-        jsr aplen
+        jsr apwant              ; rwant is per direction: recompute for
+        lda rbest               ; the one chosen, or apeat marks nothing
+        sta rn                  ; and the same leg is found forever
         jsr apeat
         lda rbest
         sec
@@ -689,46 +780,88 @@ apc5    lda rdir                ; consume the cells along the best run
         asl
         ora tmp2                ; DRAW: direction field, count-1
         jsr apbyt
-        ldx rfirst
-apc2    inx
-        inx
-        jmp apc1
-
-; ---- cmlo/cmhi = start of row A in the cell map
-cmaddr  pha
-        lsr
-        lsr
-        lsr
+        lda #1
+        sta lastdrw             ; a DRAW is last now
+        lda #0
+        sta grp3
+        lda rdir
+        sta rlast
+        lda rx                  ; apeat leaves rx,ry on the leg's last
+        sta rox                 ; cell: the polyline continues from there
+        lda ry
+        sta roy
+        jmp apdir0
+apc2    lda lstlo               ; next entry
         clc
-        adc #>cmap
-        sta mhi
-        pla
-        and #7
-        asl
-        asl
-        asl
-        asl
-        asl
+        adc #2
+        sta lstlo
+        bcc apc2a
+        inc lsthi
+apc2a   jmp apc1
+
+;-----------------------------------------------------------------------
+; mlo/mhi = start of row A in the cell map (cmaddr) or the consumed map
+; (cnaddr).  Both maps are 1K aligned a fixed number of pages below the
+; grid, so the grid's row table serves: computing the address with five
+; shifts, twice per probe, was a third of the encode.
+;-----------------------------------------------------------------------
+cmaddr  tax
+        lda rowlo,x
         sta mlo
+        lda rowhi,x
+        sec
+        sbc #>grid-cmap
+        sta mhi
+        rts
+cnaddr  tax
+        lda rowlo,x
+        sta mlo
+        lda rowhi,x
+        sec
+        sbc #>grid-cons
+        sta mhi
         rts
 
-; ---- rn = how many logged cells of this run's pen lie beyond the start
-;      in direction rd (32 at most), without consuming them
+;-----------------------------------------------------------------------
+; rwant = the cell-map value a cell must hold to be part of this leg.
+; For a wall or trap-wall pen that is the pen's field+1.  A door is one
+; class: at $C81E a DRAW re-orients a door pen to its heading, so a leg
+; going N, NE, S or SW draws vertical doors ($40, map value 3) and one
+; going E, SE, W or NW horizontal ones ($80, map value 5), whichever pen
+; the POINT had.  Atari draws a staircase of alternating doors as one
+; polyline of N and W legs; a rule that tied each door to its own
+; direction made every horizontal one a fresh POINT.
+;-----------------------------------------------------------------------
+apwant  lda rpf1
+        sta rwant
+        cmp #3
+        beq apwd
+        cmp #5
+        bne apw9
+apwd    lda rd                  ; a door: N NE (0,1) and S SW (4,5) -> 3
+        and #2                  ;         E SE (2,3) and W NW (6,7) -> 5
+        beq apwv
+        lda #5
+        bne apw8
+apwv    lda #3
+apw8    sta rwant
+apw9    rts
+
+; ---- measure the leg from (rox,roy) in direction rd: rn = its length to
+;      the last new cell, rnew = new cells on it.  Nothing is consumed.
 aplen   lda #0
         sta rn
-        ldx rfirst
-        lda weblk,x
-        and #$1f
+        sta rnew
+        lda rox
         sta rx
-        lda weblk+1,x
-        and #$1f
+        lda roy
         sta ry
 apl1    ldx rd
         lda rx
         clc
         adc dirdx,x
         cmp #32
-        bcs apl9                ; off the map either side (wraps negative)
+        bcs apl9                ; off the map (a wrap reads as >= 32)
         sta rx
         lda ry
         clc
@@ -736,32 +869,75 @@ apl1    ldx rd
         cmp #32
         bcs apl9
         sta ry
+        lda ry
         jsr cmaddr
         ldy rx
         lda (mlo),y
-        beq apl9                ; not logged
-        sec
-        sbc #1
-        tax
-        lda $9f00,x
-        bne apl9                ; already in another run
-        lda weblk,x
-        and #$e0
-        cmp rpen
-        bne apl9                ; a different pen
+        beq apl2                ; not logged: an object there?
+        cmp rwant
+        beq apl4                ; the tile this leg draws: ours
+        ; A door of the other kind: the leg may cross it, drawing it
+        ; wrong, if it is not yet covered - a later leg will draw it
+        ; right, and the last command wins.  Covered, it must not be
+        ; crossed.  Anything else logged stops the leg.
+        ldx rwant
+        cpx #3
+        beq apl5
+        cpx #5
+        bne apl9
+apl5    cmp #3
+        beq apl6
+        cmp #5
+        bne apl9
+apl6    lda ry
+        jsr cnaddr
+        ldy rx
+        lda (mlo),y
+        bne apl9                ; covered: stop
+        jmp apl3                ; uncovered: cross it, not new
+apl4
+        lda ry
+        jsr cnaddr
+        ldy rx
+        lda (mlo),y
+        bne apl3                ; ours, already drawn: overdraw, not new
         inc rn
         lda rn
+        sta rnew                ; new: the leg is worth up to here
         cmp #32
         bcc apl1
-apl9    rts
+        bcs apl9
+apl2    jsr grdat               ; the turtle may pass beneath an object
+        cmp #$13
+        bcc apl9
+        cmp #$80
+        bcs apl9
+apl3    inc rn
+        lda rn
+        cmp #32
+        bcs apl9
+        jmp apl1
+apl9    lda rnew                ; trim to the last new cell
+        sta rn
+        rts
 
-; ---- consume rn cells along rd from the run's start
-apeat   ldx rfirst
-        lda weblk,x
-        and #$1f
+; ---- A = the map tile at (rx,ry)
+grdat   ldx ry
+        lda rowlo,x
+        clc
+        adc rx
+        sta mlo
+        lda rowhi,x
+        adc #0
+        sta mhi
+        ldx #0
+        lda (mlo,x)
+        rts
+
+; ---- consume rn cells along rd from (rox,roy); leaves rx,ry on the last
+apeat   lda rox
         sta rx
-        lda weblk+1,x
-        and #$1f
+        lda roy
         sta ry
         lda rn
         sta tmp2
@@ -777,14 +953,17 @@ ape1    lda tmp2
         clc
         adc dirdy,x
         sta ry
+        lda ry
         jsr cmaddr
         ldy rx
         lda (mlo),y
-        sec
-        sbc #1
-        tax
+        cmp rwant               ; only a cell this leg draws right counts
+        bne ape1                ; as covered
+        lda ry
+        jsr cnaddr
+        ldy rx
         lda #1
-        sta $9f00,x
+        sta (mlo),y
         jmp ape1
 ape9    rts
 
@@ -792,8 +971,28 @@ ape9    rts
 dirdx   byte 0,1,1,1,0,$ff,$ff,$ff
 dirdy   byte $ff,$ff,0,1,1,1,0,$ff
 
-apnoop  jsr putnop
-        lda ovf
+; The trailing no-op decouples the last vector byte from the first object
+; byte, which the decoder's lookahead would otherwise group with it.  It
+; is needed only when their fields match - and never after a bare POINT
+; pair that is already an even group of its own.  The PC editor tries
+; without and keeps it only if the round trip fails; here the fields
+; are compared.
+apnoop  lda buf+3
+        beq apnop1              ; nothing at all: still need one (see encode)
+        lda lastdrw
+        beq apnop2              ; a POINT pair was last: an even group; safe
+        jsr lastop
+        and #$e0
+        cmp objtop              ; a DRAW was last: does its field match the
+        bne apnop9              ; object section's first byte?  then join
+apnop1  jsr putnop
+        jmp apnop9
+apnop2  jsr lastop              ; [P,P] then an object byte of the same
+        and #$e0                ; field makes three: the P bytes misread
+        cmp objtop
+        bne apnop9
+        jsr putnop
+apnop9  lda ovf
         bne apbig
         clc                     ; carry clear: the caller may go on
         rts
@@ -1070,7 +1269,17 @@ edloop  lda #$00                ; the KERNAL default: only the cursor keys,
 edwait  jsr $ffe4
         bne edwkey
         jsr joyrd               ; no key: a joystick in port 2 counts too
+        bne edwjoy
+        lda cntdue              ; nothing pressed: is a recount owed?
         beq edwait
+        lda $a2
+        sec
+        sbc cntat
+        cmp #3                  ; and has the map been still for 3 jiffies?
+        bcc edwait
+        jsr cntnow
+        jmp edwait
+edwjoy
         sta tmp
         jmp edwnew              ; it keeps its own rate, so it always acts
 edwkey  sta tmp
@@ -1236,26 +1445,50 @@ edkf    cmp #$51                ; q - quit, confirmed here
         lda #6
         jsr confirm
         bcc eddone
-edexit  jsr curon               ; ? or a confirmed q: hand back to BASIC
+edexit  jsr cntnow              ; leaving the loop: the count must be
+        jsr curon               ; current on whatever screen comes next
         rts
-eddone  lda mode
-        beq edd1
-        lda lastky              ; only paint on a movement key
-        cmp #$20
-        beq edd1
-        cmp #$2c
-        beq edd1
-        cmp #$2e
-        beq edd1
-        cmp #$4d
-        beq edd1
-        jsr paint
-edd1    jsr edscrl
-        jsr edpanl
-        lda dirty               ; the size and the warnings only move when
-        beq edd2                ; the map does
+
+; ---- recount now if one is owed
+cntnow  lda cntdue
+        beq cntn9
+        lda #0
+        sta cntdue
         jsr pnwarn
         jsr pnbyte
+cntn9   rts
+; Draw mode paints where the cursor lands, so only a cursor move should
+; paint.  This used to be a blocklist of four keys that must not paint,
+; and DEL was not on it: an erase in draw mode was painted straight back.
+; An allowlist of the four cursor codes cannot have that gap.
+eddone  lda mode
+        beq edd1
+        lda lastky
+        cmp #$91                ; up
+        beq eddp
+        cmp #$11                ; down
+        beq eddp
+        cmp #$9d                ; left
+        beq eddp
+        cmp #$1d                ; right
+        bne edd1
+eddp    jsr paint
+;-----------------------------------------------------------------------
+; The byte count and the warnings are recomputed only when the map has
+; changed since the last count - not on every key.  This used to test
+; dirty, which means "modified since the last save" and stays set, so
+; after one paint every cursor move re-ran the encoder: a quarter of a
+; second per key.  And the recount is deferred until the input has been
+; quiet for a few jiffies, so a stroke of the joystick or a held key
+; draws smoothly and the count catches up the moment you pause - which
+; is before you can have read it.
+;-----------------------------------------------------------------------
+edd1    jsr edscrl
+        jsr edpanl
+        lda cntdue
+        beq edd2
+        lda $a2                 ; note when the map last changed
+        sta cntat
 edd2
         jmp edloop
 
@@ -1264,8 +1497,10 @@ edd2
 ; edits that help are erases, and DEL still works.  Without this a player
 ; could keep painting into a level that could never be saved.
 paint   lda ldst
+        bne paintx
+        lda wefull
         beq paintk
-        rts
+paintx  rts
 paintk  ldx tidx
         lda tilev,x
         sta tmp
@@ -1277,6 +1512,7 @@ paintk  ldx tidx
         rts                     ; grew the record by two bytes a step until
 pnt0    lda #1                  ; the level would no longer fit
         sta dirty
+        sta cntdue
         lda tmp
         sta (mlo,x)
         ldx tidx
@@ -1291,91 +1527,204 @@ pnt1    sta tmp
 ;      Both paint and erase come here: editing one cell three times used to
 ;      append three entries, so the record grew whether or not the map had
 ;      changed, and erase kept its own copy of the code that did it.
-welog   jsr cellpt              ; is the cell now what the level loaded with?
+;-----------------------------------------------------------------------
+; Log a wall edit for the cell under the cursor, with the pen in tmp.
+; The cell map says whether the cell is listed and with what pen, so
+; there is no scan to decide; a scan is needed only to strike or rewrite
+; an entry, which is rare.  Reverting a cell to what the level loaded
+; with strikes its entry rather than logging on top.  The list holds 512
+; cells - the most any arcade level needs is 460 - and refuses past that.
+;-----------------------------------------------------------------------
+welog   lda #1
+        sta cntdue              ; the record will differ: recount when quiet
+        jsr cellpt
+        ldx #0
+        lda (mlo,x)
+        sta tmp2                ; the tile now
         lda mhi
         sec
         sbc #4                  ; base sits four pages below grid
         sta mhi
+        lda (mlo,x)
+        sta tmp3                ; the tile as loaded
+        lda cury
+        jsr cmaddr              ; mlo/mhi = this row of the cell map
+        ldy curx
+        lda tmp2
+        cmp tmp3
+        bne wellog
+        lda (mlo),y             ; back to the loaded tile: listed?
+        beq welrts
+        lda #0
+        sta (mlo),y             ; unlist it
+        jsr wefind
+        bcs welrts              ; (not in the list: the map was stale)
+        jmp westrk
+wellog  lda (mlo),y
+        bne welupd              ; listed: rewrite that entry's pen
+        lda welo                ; append: is there room for 512?
+        cmp #<1024
+        lda wehi
+        sbc #>1024
+        bcc welapp
+        jsr welrev              ; full: put the cell back and say so
+        lda #1
+        sta wefull
+        rts
+welapp  lda tmp
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #1
+        sta (mlo),y             ; field+1 in the map
+        lda welo
+        clc
+        adc #<weblk
+        sta lstlo
+        lda wehi
+        adc #>weblk
+        sta lsthi
+        ldy #0
+        lda tmp
+        ora curx
+        sta (lstlo),y
+        iny
+        lda tmp
+        ora cury
+        sta (lstlo),y
+        lda welo
+        clc
+        adc #2
+        sta welo
+        bcc welrts
+        inc wehi
+welrts  rts
+welupd  lda tmp                 ; rewrite the listed entry in place
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #1
+        sta (mlo),y
+        jsr wefind
+        bcs welrts
+        ldy #0
+        lda tmp
+        ora curx
+        sta (lstlo),y
+        iny
+        lda tmp
+        ora cury
+        sta (lstlo),y
+        rts
+
+; ---- the cell is back to what it loaded with: put the grid back too
+;      (the caller wrote the new tile before logging)
+welrev  jsr cellpt
+        lda mhi
+        sec
+        sbc #4
+        sta mhi
         ldx #0
-        lda (mlo,x)             ; the tile as loaded
-        sta tmp2
+        lda (mlo,x)
+        pha
         lda mhi
         clc
         adc #4
         sta mhi
-        lda (mlo,x)             ; the tile now
-        cmp tmp2
-        beq welstk              ; the same: strike any entry, log nothing
-        ldx #0
-wel1    cpx welen
-        beq welnew
-        lda weblk,x
+        pla
+        sta (mlo,x)
+        rts
+
+; ---- lstlo/hi = the entry for (curx,cury); carry set if there is none
+wefind  lda #<weblk
+        sta lstlo
+        lda #>weblk
+        sta lsthi
+wef1    lda lstlo               ; at the end?
+        cmp welo
+        bne wef2
+        lda lsthi
+        sec
+        sbc #>weblk
+        cmp wehi
+        beq wef9
+wef2    ldy #0
+        lda (lstlo),y
         and #$1f
         cmp curx
-        bne wel2
-        lda weblk+1,x
+        bne wef3
+        iny
+        lda (lstlo),y
         and #$1f
         cmp cury
-        beq welup               ; this cell is already listed: replace it
-wel2    inx
-        inx
-        jmp wel1
-; the cell is back to what it was: find its entry and close the gap
-welstk  ldx #0
-wels1   cpx welen
-        bne wels1a
-        rts                     ; not listed: nothing to strike
-wels1a
-        lda weblk,x
-        and #$1f
-        cmp curx
-        bne wels2
-        lda weblk+1,x
-        and #$1f
-        cmp cury
-        beq wels3
-wels2   inx
-        inx
-        jmp wels1
-wels3   cpx welen               ; shift everything after it down two
-        beq wels5
-        lda weblk+2,x
-        sta weblk,x
-        lda weblk+3,x
-        sta weblk+1,x
-        inx
-        inx
-        jmp wels3
-wels5   dec welen
-        dec welen
+        bne wef3
+        clc
         rts
-welup   lda tmp
-        ora curx
-        sta weblk,x
-        lda tmp
-        ora cury
-        sta weblk+1,x
+wef3    lda lstlo
+        clc
+        adc #2
+        sta lstlo
+        bcc wef1
+        inc lsthi
+        jmp wef1
+wef9    sec
         rts
-welnew  lda welen
-        cmp #249
-        bcs pnt9                ; list full
-        tax
-        lda tmp
-        ora curx
-        sta weblk,x
-        inx
-        lda tmp
-        ora cury
-        sta weblk,x
-        inx
-        stx welen
-pnt9    rts
+
+; ---- strike the entry at lstlo/hi: shift the rest down two
+westrk  ldy #2
+wes1    lda lstlo               ; reached the end?
+        clc
+        adc #2
+        sta tmp2
+        lda lsthi
+        adc #0
+        sec
+        sbc #>weblk
+        cmp wehi
+        bne wes2
+        lda tmp2
+        cmp welo
+        beq wes9
+wes2    lda (lstlo),y
+        ldy #0
+        sta (lstlo),y
+        ldy #3
+        lda (lstlo),y
+        ldy #1
+        sta (lstlo),y
+        lda lstlo
+        clc
+        adc #2
+        sta lstlo
+        bcc wes3
+        inc lsthi
+wes3    ldy #2
+        jmp wes1
+wes9    lda welo
+        sec
+        sbc #2
+        sta welo
+        bcs wes4
+        dec wehi
+wes4    lda #0
+        sta wefull              ; an entry went: there is room again
+        rts
 
 ; ---- erase: write floor, and log it so a wall underneath goes too
 erase   jsr cellpt
         ldx #0
         lda (mlo,x)
         beq era9                ; already floor: nothing to record
+        pha
+        lda #1
+        sta cntdue              ; the record will differ
+        pla
         cmp #$13
         bcs eraobj              ; an object: it lives in the object section,
         pha                     ; so clearing it needs no wall edit at all -
@@ -2073,7 +2422,9 @@ pnbl1   lda lbbyte,x
         jsr pblit
         jsr pclr
         jsr encode              ; safe to repeat: apvec rebuilds the vector
-        lda ldst                ; section from veclen every time
+        lda wefull              ; section from veclen every time
+        bne pnbf
+        lda ldst
         bne pnbx
         lda buf                 ; length is nine bits: low byte in buf,
         sta szlo                ; top bit in bit 7 of buf+2
@@ -2090,6 +2441,12 @@ pnbl1   lda lbbyte,x
         lda #49
         sta pbuf+5
         sta pbuf+6
+        jmp pnb9
+pnbf    ldx #7                  ; the edit list is full
+pnbf1   lda lbfull,x
+        sta pbuf,x
+        dex
+        bpl pnbf1
         jmp pnb9
 pnbx    ldx #7                  ; will not fit at all
 pnb8    lda lbtoob,x
@@ -2174,6 +2531,7 @@ lbund   byte $03,$15,$12,$13,$0f,$12,$3a
 lbnost  byte $13,$14,$01,$12,$14,$13,$21,$20
 lbbyte  byte $02,$19,$14,$05,$13,$3a,$20,$20
 lbtoob  byte $14,$0f,$0f,$20,$02,$09,$07,$21
+lbfull  byte $05,$04,$09,$14,$13,$20,$20,$21     ; EDITS  !
 lbnoex  byte $0e,$0f,$20,$05,$18,$09,$14,$21
 
 
@@ -3065,7 +3423,16 @@ newlvl  lda #6
 ; leave two bytes of edit per cell - the byte count never came back down,
 ; and TOO BIG stayed on the screen after the mistake was cleared.
 clrwe   lda #0
-        sta welen
+        sta welo
+        sta wehi
+        sta wefull
+        tax
+clrw0   sta cmap,x              ; nothing logged: four pages
+        sta cmap+$100,x
+        sta cmap+$200,x
+        sta cmap+$300,x
+        inx
+        bne clrw0
         ldx #0
 clrw1   lda grid,x              ; four pages, $9800 -> $9400
         sta base,x
