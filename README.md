@@ -1,7 +1,5 @@
 # Gauntlet Construction Kit and level generator
 
-![C64 level editor](editorscreen.png)
-
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -199,7 +197,15 @@ are what the batched disk stores as files.
 This is the C64 half: `gauntkit.prg` loads with `LOAD"*",8` and runs with
 `RUN` on the machine itself. A joystick in port 2 works alongside the
 keyboard: the stick moves the cursor, including diagonally, and fire
-places the selected item. It is read once per pass of the input loop, so
+places the selected item. `M` steps the draw mode through OFF, ON and PICK. ON paints as the
+cursor moves, and with a door selected lays the door for the heading —
+vertical on up and down, horizontal on left and right, as the game
+itself draws them. PICK moves things: space on an item lifts it (the
+panel says HOLDING), move the cursor, space again drops it. A lift can
+cost bytes — erasing a wall the level drew itself adds an edit — so if
+the count tips over while something is in hand, it can always be put
+back where it came from, and leaving pick mode puts it back for you.
+Nothing lifted is ever lost. It is read once per pass of the input loop, so
 it costs nothing. It is pure 6502 machine code behind a one-line
 BASIC stub, and edits any level file on a Gauntlet or Deeper Dungeons disk
 that stores them as separate `LEVEL nnn` files. Press `?` for the key list.
@@ -286,6 +292,10 @@ reproduces its pulses exactly - but nothing here has been played from a
 real cassette, and side 1 would still have to come from the original.
 
 ## Check a set
+
+The arcade original's levels are batched on its disk as files `A` to `O`;
+`extract_arcade.py Gauntlet.d64 --out arcade/` pulls them into a directory
+that `audit.py --ref` and the compiler tests can read.
 
 `audit.py` measures a whole set against the arcade original across every
 feature at once, which is the only way to notice that a change fixing the

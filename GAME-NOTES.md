@@ -19,6 +19,31 @@ build. See **Two builds** at the end.
 
 ## What changed most recently
 
+**21 September 2026, later** — a validation pass over the C64 kit found
+three faults: `C` took its base snapshot *before* clearing the map, so
+after a clear, erasing a wall that the old level had at that cell logged
+an edit; draw mode painted the cell under the cursor when a move was
+blocked at the map edge; and an item in hand survived `C` and `L`, to be
+dropped into a level it was not from. All fixed. A joystick in port 2,
+pick mode, and the door-by-heading rule all went in the same weekend.
+
+The compiler's gap against Atari turned out to be three levels, not a
+percentage. Measured properly - vector section against vector section,
+the same cells logged the same way - a single greedy policy is 0.5% over
+Atari across all 128 levels, and the best of six policies is 0.3%
+*under*. The PC editor tries all six and keeps the smallest; the C64 kit
+runs the best single one. Drawn from scratch: PC 126 of 128, C64 124.
+Level 120 is three bytes over the vector limit on both; level 27's door
+staircase and level 77's spiral are Atari hand-encodings a greedy walk
+does not find (250 and 178 bytes against 189 and 117), though both now
+fit. Level 75 is a wall of 295 exits that Atari draws with the vector
+pen; the PC treats exits as objects and cannot fit it, the C64 can.
+
+The arcade levels themselves live only on the original disk, batched as
+files A to O; `extract_arcade.py` pulls them out, since a sandbox reset
+took the working copy this morning.
+
+
 **21 September 2026** — a full test of the wall compiler, in both editors,
 against the one benchmark that exists: the arcade's 128 levels, redrawn
 from scratch and compared with Atari's own files.
@@ -107,7 +132,16 @@ cursor move re-ran the encoder; and it ran after every paint in a
 stroke. A twenty-cell stroke cost three seconds of encoding and now
 costs a fifth of one, all of it after the stroke ends.
 
-Draw mode paints only after a cursor move now. It used to paint after
+`M` has a third setting, PICK: space lifts the item under the cursor
+and the next space drops it, for moving a monster or a key without
+deleting and replacing it. A lift is an erase and can cost bytes, so
+a level at the ceiling could leave an item in hand with nowhere to put
+it: the origin is remembered, a drop there is always allowed since it
+restores the level, a lift from a level already over is refused, and
+leaving pick mode puts the item home. Draw mode paints only after a cursor move
+now, and with a door selected
+lays the door for the heading - vertical on up and down, horizontal on
+left and right - as the game does at `$C81E` when it draws one. It used to paint after
 every key but four, and DEL was not among the four, so an erase in draw
 mode was painted straight back.
 

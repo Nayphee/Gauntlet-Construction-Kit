@@ -121,7 +121,12 @@ nexit   byte 0
 curx    byte 0
 cury    byte 0
 tidx    byte 1
-mode    byte 0
+mode    byte 0                  ; 0 off, 1 draw as you move, 2 pick
+holding byte 0                  ; pick mode: an item is lifted
+pickx   byte 0                  ; and where it was lifted from
+picky   byte 0
+oldx    byte 0                  ; the cursor when the last key arrived
+oldy    byte 0
 lastky  byte 0
 lvlno   byte 1
 prevky  byte 0                  ; last key, for the repeat guard only
@@ -168,6 +173,7 @@ joyalt  byte 0
 ovf     byte 0                  ; set when apbyt had to drop a byte
 cntdue  byte 0                  ; the count is stale; recount when input is quiet
 wefull  byte 0                  ; the edit list is full; nothing more paints
+savsel  byte 0                  ; the selection, across a heading-picked door
 cntat   byte 0                  ; jiffy of the last map change
 noopc   byte 0,0                ; column,row the no-op POINT targets
 gap     byte 0                  ; pending skip count while encoding
@@ -1298,7 +1304,11 @@ edwkey  sta tmp
         jmp edwgo
 edwnew  lda #0                  ; a new key always acts at once
         sta rptacc
-edwgo   lda tmp
+edwgo   lda curx
+        sta oldx                ; where the cursor was: draw mode paints
+        lda cury                ; only if the key actually moved it
+        sta oldy
+        lda tmp
         sta lastky
         sta prevky
         jsr curoff
@@ -1331,10 +1341,62 @@ edk3    cmp #$1d                ; cursor right
         beq edd9
         inc curx
 edd9    jmp eddone
-edk4    cmp #$20                ; space - paint
+;-----------------------------------------------------------------------
+; Space.  In pick mode it lifts the item under the cursor - the cell
+; clears, the item becomes the selection, the panel says HOLDING - and
+; the next space drops it where the cursor is.  The cell is cleared with
+; erase, so a wall lifted is a wall edit struck or logged like any other,
+; and dropped with paint, so it is placed like any other.
+;-----------------------------------------------------------------------
+edk4    cmp #$20                ; space - paint, or in pick mode lift/drop
         bne edk5
-        jsr paint
+        lda mode
+        cmp #2
+        bne edk4p
+        lda holding
+        bne edk4d
+        jsr cntnow              ; lift: with a current count, and not
+        lda ldst                ; from a level already over - the item
+        bne eddone2             ; could never be put down
+        jsr cellpt              ; what is here?
+        ldx #0
+        lda (mlo,x)
+        beq eddone2             ; floor: nothing to lift
+        jsr tileof              ; A = the tile -> A = its index, or $ff
+        cmp #$ff
+        beq eddone2             ; not a placeable tile: leave it
+        sta tidx
+        lda curx
+        sta pickx               ; where it came from: a drop there is
+        lda cury                ; always allowed, since it only puts the
+        sta picky               ; level back as it was
+        jsr erase
+        lda #1
+        sta holding
         jmp eddone
+; Drop.  At the origin it always goes down, whatever the count says: it
+; restores the level.  Anywhere else it is an ordinary paint, refused if
+; the level is over - and then the item is still in hand, the panel says
+; TOO BIG, and moving back to where it came from is always a way out.
+edk4d   lda curx
+        cmp pickx
+        bne edk4e
+        lda cury
+        cmp picky
+        bne edk4e
+        jsr paintk              ; home: unconditionally
+        lda #0
+        sta holding
+        jmp eddone
+edk4e   jsr paint
+        lda ldst                ; refused?  then it stays in hand
+        bne eddone2
+        lda #0
+        sta holding
+        jmp eddone
+edk4p   jsr paint
+        jmp eddone
+eddone2 jmp eddone
 edk5    cmp #$2e                ; . - next tile
         bne edk6
         inc tidx
@@ -1391,11 +1453,20 @@ edk7e   cmp #$14                ; del - erase this cell
         bne edk8x
         jsr erase
         jmp eddone
-edk8x   cmp #$4d                ; m - paint as you move
+edk8x   cmp #$4d                ; m - draw mode: off, on, pick
         bne edk8
         lda mode
-        eor #$01
-        sta mode
+        clc
+        adc #1
+        cmp #3
+        bcc edk8m
+        lda #0
+edk8m   sta mode
+        lda holding
+        beq edk8n
+        jsr pickhm              ; an item in hand goes home: never lost
+edk8n   lda #0
+        sta holding
         jmp eddone
 edk8    cmp #$4c                ; l - load the level LVL shows
         bne edk9
@@ -1461,17 +1532,45 @@ cntn9   rts
 ; paint.  This used to be a blocklist of four keys that must not paint,
 ; and DEL was not on it: an erase in draw mode was painted straight back.
 ; An allowlist of the four cursor codes cannot have that gap.
+; With a door selected, draw mode picks the door for the heading: up and
+; down lay vertical doors, left and right horizontal, whichever of the
+; two is selected - as the game itself does when it draws a door along a
+; heading.  The selection is swapped for the one paint and put back, so
+; the panel and the next placement still show what was chosen.  A
+; diagonal from the joystick arrives as two orthogonal moves and gets the
+; door for each.
 eddone  lda mode
+        cmp #1
+        bne edd1                ; only ON paints as the cursor moves
+        lda curx                ; and only if it moved: at an edge the
+        cmp oldx                ; key is blocked, and painting the cell
+        bne eddmv               ; under the cursor again each press was
+        lda cury                ; an edit nobody asked for
+        cmp oldy
         beq edd1
-        lda lastky
+eddmv   lda lastky
         cmp #$91                ; up
-        beq eddp
+        beq eddv
         cmp #$11                ; down
-        beq eddp
+        beq eddv
         cmp #$9d                ; left
-        beq eddp
+        beq eddh
         cmp #$1d                ; right
         bne edd1
+eddh    ldx #5                  ; horizontal door
+        bne eddd
+eddv    ldx #4                  ; vertical door
+eddd    lda tidx
+        cmp #4
+        beq eddsw
+        cmp #5
+        bne eddp                ; not a door: paint what is selected
+eddsw   sta savsel              ; a door: paint the one for the heading
+        stx tidx                ; (welog uses tmp3, so not that)
+        jsr paint
+        lda savsel
+        sta tidx
+        jmp edd1
 eddp    jsr paint
 ;-----------------------------------------------------------------------
 ; The byte count and the warnings are recomputed only when the map has
@@ -1887,7 +1986,15 @@ edp1    lda (srclo),y
         ldy #7
 edp2    lda mode
         beq edp3
+        cmp #2
+        beq edp5
         lda lbdron,y
+        jmp edp4
+edp5    lda holding
+        beq edp6
+        lda lbhold,y
+        jmp edp4
+edp6    lda lbpick,y
         jmp edp4
 edp3    lda lbdraw,y
 edp4    sta pbuf,y
@@ -1895,6 +2002,41 @@ edp4    sta pbuf,y
         bpl edp2
         lda #14                 ; row 14: SCROLL: took 12 and 13
         jmp pblit
+
+;---- if an item is in hand, put it home and empty the hand
+unhold  lda holding
+        beq unh9
+        jsr pickhm
+        lda #0
+        sta holding
+unh9    rts
+
+;---- put the item in hand back at its origin, leaving the cursor as it is
+pickhm  lda curx
+        pha
+        lda cury
+        pha
+        lda pickx
+        sta curx
+        lda picky
+        sta cury
+        jsr paintk
+        pla
+        sta cury
+        pla
+        sta curx
+        rts
+
+; ---- A = the palette index whose tile value is A, or $ff if there is none
+tileof  ldx #0
+tof1    cmp tilev,x
+        beq tof9
+        inx
+        cpx #57                 ; palette entries
+        bcc tof1
+        ldx #$ff
+tof9    txa
+        rts
 
 ; ---- srclo/srchi = tilen + A*8, as a 16-bit address
 namptr  asl
@@ -2525,6 +2667,8 @@ lbsc2   byte $08,$0f,$12,$09,$1a       ; bit 7: HORIZ
 lbsc3   byte $02,$0f,$14,$08
 lbdraw  byte $04,$12,$01,$17,$20,$0f,$06,$06
 lbdron  byte $04,$12,$01,$17,$20,$0f,$0e,$20
+lbpick  byte $10,$09,$03,$0b,$20,$20,$20,$20     ; PICK
+lbhold  byte $08,$0f,$0c,$04,$09,$0e,$07,$20     ; HOLDING
 lbgfx   byte $07,$06,$18,$20
 lbcol   byte $03,$0f,$0c,$20
 lbund   byte $03,$15,$12,$13,$0f,$12,$3a
@@ -2708,6 +2852,7 @@ mkf3    iny
 
 ; ---- load the level named by lvlno; a blank one if it is not there
 doload  jsr mkfn
+        jsr unhold              ; see donew
         jsr loadlev
         lda ldst
         beq dld1
@@ -2888,8 +3033,12 @@ dcl1    sta tmp
 donew   lda #5                  ; new lvl?
         jsr confirm
         bcc dnw9
-        jsr clrwe
-        jsr newlvl
+        jsr unhold              ; an item in hand goes home first, or it
+        jsr newlvl              ; would be carried into a level it is not
+                                ; from, with a home that no longer exists
+                                ; clear the map first: clrwe snapshots it
+        jsr clrwe               ; as the base, and the other order left the
+                                ; old level as the base of an empty map
         lda #0
         sta dirty
         jsr count
@@ -3286,105 +3435,106 @@ helptab byte $28,$20,$20,$12,$2a,$2a,$2a,$2a
         byte $52,$4f,$4c,$4c,$20,$3d,$20,$4e
         byte $4f,$4e,$45,$2f,$48,$4f,$52,$49
         byte $5a,$2f,$56,$45,$52,$54,$2f,$42
-        byte $4f,$54,$48,$0d,$25,$20,$20,$20
+        byte $4f,$54,$48,$0d,$28,$20,$20,$20
         byte $20,$20,$20,$20,$20,$20,$20,$20
         byte $44,$52,$41,$57,$20,$3d,$20,$44
         byte $52,$41,$57,$20,$4d,$4f,$44,$45
-        byte $20,$28,$4f,$4e,$2f,$4f,$46,$46
-        byte $29,$0d,$25,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$54,$52,$20,$26,$20
-        byte $54,$57,$20,$3d,$20,$54,$52,$41
-        byte $50,$53,$20,$26,$20,$54,$52,$41
-        byte $50,$20,$57,$41,$4c,$4c,$53,$0d
-        byte $28,$20,$20,$20,$20,$20,$20,$47
-        byte $46,$58,$20,$26,$20,$43,$4f,$4c
-        byte $20,$3d,$20,$57,$41,$4c,$4c,$20
-        byte $47,$46,$58,$20,$30,$2d,$32,$2c
-        byte $20,$43,$4f,$4c,$20,$30,$2d,$36
-        byte $0d,$01,$0d,$26,$20,$20,$20,$12
+        byte $20,$4f,$4e,$2f,$4f,$46,$46,$2f
+        byte $50,$49,$43,$4b,$0d,$25,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$54,$52
+        byte $20,$26,$20,$54,$57,$20,$3d,$20
+        byte $54,$52,$41,$50,$53,$20,$26,$20
+        byte $54,$52,$41,$50,$20,$57,$41,$4c
+        byte $4c,$53,$0d,$28,$20,$20,$20,$20
+        byte $20,$20,$47,$46,$58,$20,$26,$20
+        byte $43,$4f,$4c,$20,$3d,$20,$57,$41
+        byte $4c,$4c,$20,$47,$46,$58,$20,$30
+        byte $2d,$32,$2c,$20,$43,$4f,$4c,$20
+        byte $30,$2d,$36,$0d,$01,$0d,$26,$20
+        byte $20,$20,$12,$20,$50,$52,$45,$53
+        byte $53,$20,$41,$4e,$59,$20,$4b,$45
+        byte $59,$20,$46,$4f,$52,$20,$54,$48
+        byte $45,$20,$4e,$45,$58,$54,$20,$50
+        byte $41,$47,$45,$20,$92,$00,$1f,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$12,$20,$2a,$20,$4d
+        byte $41,$50,$20,$4c,$45,$47,$45,$4e
+        byte $44,$20,$2a,$20,$92,$0d,$01,$0d
+        byte $0a,$12,$54,$45,$52,$52,$41,$49
+        byte $4e,$92,$0d,$23,$20,$20,$98,$2e
+        byte $90,$20,$20,$45,$4d,$50,$54,$59
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$98,$12,$20,$92,$90
+        byte $20,$20,$57,$41,$4c,$4c,$0d,$28
+        byte $20,$20,$1f,$e6,$90,$20,$20,$54
+        byte $52,$41,$50,$57,$41,$4c,$4c,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$98
+        byte $12,$e6,$92,$90,$20,$20,$42,$52
+        byte $45,$41,$4b,$41,$42,$4c,$45,$0d
+        byte $27,$20,$20,$9f,$dd,$c0,$90,$20
+        byte $44,$4f,$4f,$52,$53,$20,$56,$2f
+        byte $48,$20,$20,$20,$20,$20,$20,$20
+        byte $1c,$db,$90,$20,$20,$54,$45,$4c
+        byte $45,$50,$4f,$52,$54,$45,$52,$0d
+        byte $23,$20,$20,$1e,$2a,$90,$20,$20
+        byte $53,$54,$41,$52,$54,$20,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $90,$12,$58,$92,$90,$20,$20,$45
+        byte $58,$49,$54,$0d,$01,$0d,$0a,$12
+        byte $50,$49,$43,$4b,$55,$50,$53,$92
+        byte $0d,$20,$20,$20,$81,$24,$90,$20
+        byte $20,$54,$52,$45,$41,$53,$55,$52
+        byte $45,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$95,$de,$90,$20,$20,$4b,$45
+        byte $59,$0d,$23,$20,$20,$9e,$d1,$90
+        byte $20,$20,$43,$49,$44,$45,$52,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$9e,$d7,$90,$20,$20,$50
+        byte $4f,$49,$53,$4f,$4e,$0d,$21,$20
+        byte $20,$1c,$d3,$90,$20,$20,$46,$4f
+        byte $4f,$44,$20,$20,$20,$20,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$1f,$40
+        byte $90,$20,$20,$54,$52,$41,$50,$0d
+        byte $28,$20,$20,$1f,$d8,$90,$20,$20
+        byte $4d,$41,$47,$49,$43,$20,$28,$42
+        byte $4c,$55,$45,$29,$20,$20,$20,$20
+        byte $9e,$d8,$90,$20,$20,$4d,$41,$47
+        byte $49,$43,$20,$28,$59,$45,$4c,$29
+        byte $0d,$23,$20,$20,$9a,$c1,$90,$20
+        byte $20,$50,$4f,$54,$49,$4f,$4e,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$20
+        byte $20,$96,$5c,$90,$20,$20,$41,$4d
+        byte $55,$4c,$45,$54,$0d,$1e,$20,$20
+        byte $20,$20,$20,$41,$52,$4d,$4f,$55
+        byte $52,$2c,$20,$43,$41,$52,$52,$59
+        byte $49,$4e,$47,$2c,$20,$4d,$41,$47
+        byte $49,$43,$2c,$0d,$23,$20,$20,$20
+        byte $20,$20,$53,$48,$4f,$54,$20,$50
+        byte $4f,$57,$45,$52,$2c,$20,$53,$48
+        byte $4f,$54,$20,$53,$50,$45,$45,$44
+        byte $2c,$20,$46,$49,$47,$48,$54,$0d
+        byte $01,$0d,$0b,$12,$4d,$4f,$4e,$53
+        byte $54,$45,$52,$53,$92,$0d,$26,$20
+        byte $20,$9c,$41,$90,$20,$47,$48,$4f
+        byte $53,$54,$20,$20,$20,$20,$9c,$42
+        byte $90,$20,$47,$52,$55,$4e,$54,$20
+        byte $20,$20,$20,$9c,$43,$90,$20,$44
+        byte $45,$4d,$4f,$4e,$0d,$26,$20,$20
+        byte $9c,$44,$90,$20,$4c,$4f,$42,$42
+        byte $45,$52,$20,$20,$20,$9c,$45,$90
+        byte $20,$53,$4f,$52,$43,$45,$52,$45
+        byte $52,$20,$9c,$46,$90,$20,$44,$45
+        byte $41,$54,$48,$0d,$26,$20,$20,$20
+        byte $20,$49,$4e,$56,$45,$52,$53,$45
+        byte $44,$20,$9c,$12,$41,$2d,$45,$92
+        byte $90,$20,$49,$53,$20,$49,$54,$53
+        byte $20,$47,$45,$4e,$45,$52,$41,$54
+        byte $4f,$52,$0d,$01,$0d,$23,$20,$20
+        byte $20,$20,$20,$20,$20,$20,$20,$12
         byte $20,$50,$52,$45,$53,$53,$20,$41
-        byte $4e,$59,$20,$4b,$45,$59,$20,$46
-        byte $4f,$52,$20,$54,$48,$45,$20,$4e
-        byte $45,$58,$54,$20,$50,$41,$47,$45
-        byte $20,$92,$00,$1f,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$20,$20
-        byte $12,$20,$2a,$20,$4d,$41,$50,$20
-        byte $4c,$45,$47,$45,$4e,$44,$20,$2a
-        byte $20,$92,$0d,$01,$0d,$0a,$12,$54
-        byte $45,$52,$52,$41,$49,$4e,$92,$0d
-        byte $23,$20,$20,$98,$2e,$90,$20,$20
-        byte $45,$4d,$50,$54,$59,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$20,$20
-        byte $98,$12,$20,$92,$90,$20,$20,$57
-        byte $41,$4c,$4c,$0d,$28,$20,$20,$1f
-        byte $e6,$90,$20,$20,$54,$52,$41,$50
-        byte $57,$41,$4c,$4c,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$98,$12,$e6,$92
-        byte $90,$20,$20,$42,$52,$45,$41,$4b
-        byte $41,$42,$4c,$45,$0d,$27,$20,$20
-        byte $9f,$dd,$c0,$90,$20,$44,$4f,$4f
-        byte $52,$53,$20,$56,$2f,$48,$20,$20
-        byte $20,$20,$20,$20,$20,$1c,$db,$90
-        byte $20,$20,$54,$45,$4c,$45,$50,$4f
-        byte $52,$54,$45,$52,$0d,$23,$20,$20
-        byte $1e,$2a,$90,$20,$20,$53,$54,$41
-        byte $52,$54,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$90,$12,$58
-        byte $92,$90,$20,$20,$45,$58,$49,$54
-        byte $0d,$01,$0d,$0a,$12,$50,$49,$43
-        byte $4b,$55,$50,$53,$92,$0d,$20,$20
-        byte $20,$81,$24,$90,$20,$20,$54,$52
-        byte $45,$41,$53,$55,$52,$45,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$95,$de
-        byte $90,$20,$20,$4b,$45,$59,$0d,$23
-        byte $20,$20,$9e,$d1,$90,$20,$20,$43
-        byte $49,$44,$45,$52,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$20,$9e
-        byte $d7,$90,$20,$20,$50,$4f,$49,$53
-        byte $4f,$4e,$0d,$21,$20,$20,$1c,$d3
-        byte $90,$20,$20,$46,$4f,$4f,$44,$20
-        byte $20,$20,$20,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$1f,$40,$90,$20,$20
-        byte $54,$52,$41,$50,$0d,$28,$20,$20
-        byte $1f,$d8,$90,$20,$20,$4d,$41,$47
-        byte $49,$43,$20,$28,$42,$4c,$55,$45
-        byte $29,$20,$20,$20,$20,$9e,$d8,$90
-        byte $20,$20,$4d,$41,$47,$49,$43,$20
-        byte $28,$59,$45,$4c,$29,$0d,$23,$20
-        byte $20,$9a,$c1,$90,$20,$20,$50,$4f
-        byte $54,$49,$4f,$4e,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$20,$20,$96,$5c
-        byte $90,$20,$20,$41,$4d,$55,$4c,$45
-        byte $54,$0d,$1e,$20,$20,$20,$20,$20
-        byte $41,$52,$4d,$4f,$55,$52,$2c,$20
-        byte $43,$41,$52,$52,$59,$49,$4e,$47
-        byte $2c,$20,$4d,$41,$47,$49,$43,$2c
-        byte $0d,$23,$20,$20,$20,$20,$20,$53
-        byte $48,$4f,$54,$20,$50,$4f,$57,$45
-        byte $52,$2c,$20,$53,$48,$4f,$54,$20
-        byte $53,$50,$45,$45,$44,$2c,$20,$46
-        byte $49,$47,$48,$54,$0d,$01,$0d,$0b
-        byte $12,$4d,$4f,$4e,$53,$54,$45,$52
-        byte $53,$92,$0d,$26,$20,$20,$9c,$41
-        byte $90,$20,$47,$48,$4f,$53,$54,$20
-        byte $20,$20,$20,$9c,$42,$90,$20,$47
-        byte $52,$55,$4e,$54,$20,$20,$20,$20
-        byte $9c,$43,$90,$20,$44,$45,$4d,$4f
-        byte $4e,$0d,$26,$20,$20,$9c,$44,$90
-        byte $20,$4c,$4f,$42,$42,$45,$52,$20
-        byte $20,$20,$9c,$45,$90,$20,$53,$4f
-        byte $52,$43,$45,$52,$45,$52,$20,$9c
-        byte $46,$90,$20,$44,$45,$41,$54,$48
-        byte $0d,$26,$20,$20,$20,$20,$49,$4e
-        byte $56,$45,$52,$53,$45,$44,$20,$9c
-        byte $12,$41,$2d,$45,$92,$90,$20,$49
-        byte $53,$20,$49,$54,$53,$20,$47,$45
-        byte $4e,$45,$52,$41,$54,$4f,$52,$0d
-        byte $01,$0d,$23,$20,$20,$20,$20,$20
-        byte $20,$20,$20,$20,$12,$20,$50,$52
-        byte $45,$53,$53,$20,$41,$4e,$59,$20
-        byte $4b,$45,$59,$20,$54,$4f,$20,$53
-        byte $54,$41,$52,$54,$20,$92,$00,$00
+        byte $4e,$59,$20,$4b,$45,$59,$20,$54
+        byte $4f,$20,$53,$54,$41,$52,$54,$20
+        byte $92,$00,$00
 
 ; ----------------------------------------------------------------------
 ; newlvl - build the smallest valid level and decode it.

@@ -299,7 +299,7 @@ DIR8 = [('N', 0, -1), ('NE', 1, -1), ('E', 1, 0), ('SE', 1, 1),
         ('S', 0, 1), ('SW', -1, 1), ('W', -1, 0), ('NW', -1, -1)]
 
 
-def edit_polylines(edits, wild=()):
+def edit_polylines(edits, wild=(), policy=None):
     """The edits as polylines: one POINT, then a DRAW per straight leg.
 
     A snake wall - right, down, right, up - is one shape to the person
@@ -320,6 +320,17 @@ def edit_polylines(edits, wild=()):
     # draws a staircase of alternating doors as one polyline of N and W
     # legs.  Keying doors by pen made every horizontal door in such a
     # staircase its own POINT: 158 on level 27 where Atari uses 28.
+    # policy: how legs and starts are chosen.  The greedy walk below is
+    # a heuristic, and different heuristics win on different maps: a
+    # level of doors is best drawn as long spines with fix-ups after,
+    # a lattice as the longest new run each time.  The save tries each
+    # and keeps the smallest.
+    policy = policy or {}
+    by_length = policy.get('by_length', False)   # score legs by total length
+    start_hi = policy.get('start_hi', False)     # start where most neighbours
+    ortho = policy.get('ortho', False)           # no diagonal legs
+    seed = policy.get('seed')                    # randomise tie-breaks
+    rnd = __import__('random').Random(seed) if seed is not None else None
     DOOR = 'door'
     cells = {}
     door_pen = {}
@@ -336,7 +347,8 @@ def edit_polylines(edits, wild=()):
         while left:
             def degree(c):
                 return sum(1 for _, dx, dy in DIR8 if (c[0] + dx, c[1] + dy) in allc)
-            start = min(left, key=lambda c: (degree(c), c))
+            start = min(left, key=lambda c: ((-degree(c) if start_hi else degree(c)),
+                                             rnd.random() if rnd else 0, c))
             pen = door_pen[start] if key == DOOR else key
             pf = pen >> 5
             cmds.append(('POINT', pen, start[0], start[1]))
@@ -347,6 +359,8 @@ def edit_polylines(edits, wild=()):
                 best, bd, bf, bnew = [], None, None, 0
                 for f, (name, dx, dy) in enumerate(DIR8):
                     if f == last_field:
+                        continue
+                    if ortho and f & 1:
                         continue
                     # A door leg draws the kind of door its heading
                     # makes.  It may still cross a door of the other
@@ -371,7 +385,9 @@ def edit_polylines(edits, wild=()):
                     while leg and not (leg[-1] in left and good(leg[-1])):
                         leg.pop()
                     new = sum(1 for c in leg if c in left and good(c))
-                    if new > bnew or (new == bnew and new and len(leg) < len(best)):
+                    score = (len(leg) if by_length else new, new) if new else (0, 0)
+                    bscore = (len(best) if by_length else bnew, bnew) if bnew else (0, 0)
+                    if score > bscore or (score == bscore and new and len(leg) < len(best)):
                         best, bd, bf, bnew = leg, name, f, new
                         bgood = good
                 if not best:
@@ -381,6 +397,24 @@ def edit_polylines(edits, wild=()):
                 here = best[-1]
                 last_field = bf
     return cmds
+
+
+POLICIES = [{}, {'by_length': True}, {'start_hi': True},
+            {'by_length': True, 'start_hi': True}, {'ortho': True},
+            {'by_length': True, 'ortho': True}]
+
+
+def best_polylines(edits, wild, floor):
+    """The smallest encoding any policy produces."""
+    best = None
+    for pol in POLICIES:
+        cmds = separate_groups(edit_polylines(edits, wild, pol), floor)
+        if check_vector_grammar(cmds):
+            continue
+        n = len(encode_vectors(cmds))
+        if best is None or n < best[0]:
+            best = (n, cmds)
+    return best[1] if best else separate_groups(edit_polylines(edits, wild), floor)
 
 
 def separate_groups(cmds, floor):
@@ -455,7 +489,7 @@ def save_patched(lv, load_addr=0x0A00):
     edits = wall_edits(lv)
     wild = [(i % W, i // W) for i in range(MAP_SIZE) if 0x13 <= lv.grid[i] <= 0x7F]
     floor = next(((i % W, i // W) for i in range(MAP_SIZE) if lv.grid[i] == 0), (1, 1))
-    poly = encode_vectors(separate_groups(edit_polylines(edits, wild), floor))
+    poly = encode_vectors(best_polylines(edits, wild, floor))
     chained = runs_to_bytes(edit_runs(edits))
     bare = b''.join(bytes([p | x, p | y]) for p, x, y in edits)
     base_vec = lv.vec + poly
