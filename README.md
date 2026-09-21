@@ -456,8 +456,8 @@ Where a reading is uncertain the documents say so rather than guessing.
 ## How this was made
 
 The disassembly, the editor, the level generator and the documentation were
-all produced with Claude Opus 5 (Anthropic), working from a disk image of
-the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
+all produced with Claude Opus 5 (Anthropic) with some fixes and bug testing from Fable 5.1, 
+working from a disk image of the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
 also the audit: a generator with no taste needs numbers to argue with.
 
 The work was empirical rather than clever: read the game's code to find out
