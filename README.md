@@ -1,5 +1,7 @@
 # Gauntlet Construction Kit and level generator
 
+![Commodore 64 editor](editorscreen.png)
+
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -455,7 +457,7 @@ Where a reading is uncertain the documents say so rather than guessing.
 ## How this was made
 
 The disassembly, the editor, the level generator and the documentation were
-all produced with Claude Opus 5 (Anthropic), working from a disk image of
+all produced with Claude Opus 5 and Fable 5.1 (Anthropic), working from a disk image of
 the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
 also the audit: a generator with no taste needs numbers to argue with.
 
