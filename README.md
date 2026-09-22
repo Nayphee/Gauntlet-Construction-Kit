@@ -1,7 +1,5 @@
 # Gauntlet Construction Kit and level generator
 
-![Commodore 64 Construction Kit editor](editorscreen.png)
-
 Two things, in two places.
 
 **The level editor runs on the Commodore 64.** It is 6502 machine code —
@@ -207,7 +205,8 @@ panel says HOLDING), move the cursor, space again drops it. A lift can
 cost bytes — erasing a wall the level drew itself adds an edit — so if
 the count tips over while something is in hand, it can always be put
 back where it came from, and leaving pick mode puts it back for you.
-Nothing lifted is ever lost. It is read once per pass of the input loop, so
+Nothing lifted is ever lost. `U` undoes the last edit — any paint or
+erase, a pick-and-drop being two — and there are 680 steps of it. It is read once per pass of the input loop, so
 it costs nothing. It is pure 6502 machine code behind a one-line
 BASIC stub, and edits any level file on a Gauntlet or Deeper Dungeons disk
 that stores them as separate `LEVEL nnn` files. Press `?` for the key list.
@@ -456,8 +455,8 @@ Where a reading is uncertain the documents say so rather than guessing.
 ## How this was made
 
 The disassembly, the editor, the level generator and the documentation were
-all produced with Claude Opus 5 (Anthropic) with some fixes and bug testing from Fable 5.1, 
-working from a disk image of the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
+all produced with Claude Opus 5 (Anthropic), working from a disk image of
+the game and a 6502 simulator. Hence *The Sloppier Dungeons*, and hence
 also the audit: a generator with no taste needs numbers to argue with.
 
 The work was empirical rather than clever: read the game's code to find out

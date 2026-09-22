@@ -19,6 +19,33 @@ build. See **Two builds** at the end.
 
 ## What changed most recently
 
+**22 September 2026** — a bug report with two screenshots: lift a
+trap-wall in pick mode, press `T` for the trap preview, come back, and
+the trap-wall is there again. `erase` called anything at `$13` or above
+an object and skipped the wall edit - but a trap-wall is `$90` and the
+vector pen's exit `$92`, both drawn by the vector section, so nothing
+told the section to stop drawing them. The preview re-decodes and showed
+it; a save would have kept it. Fixed, with the object range now `$13`
+to `$7F`. And the same report asked for undo: `U`, 680 steps, each paint
+and erase logging the cell and what it held, the undo going back through
+the same paint and erase so the edit list and the count follow.
+
+Validating undo properly - random sessions, then undo everything, and
+check the *saved* level as well as the screen - found two faults older
+than undo, in how objects and the edit list meet. Erasing an object that
+sat on a wall the level drew logged nothing, so the screen showed floor
+and the save had the wall. And painting an object over a cell with a
+wall edit left the edit listed beneath it, which the object hid until
+the object was removed - then the save had a wall the screen did not.
+Both fixed with one rule: an object hides the vector layer, so placing
+one strikes any edit at the cell and the map as loaded shows through;
+erasing one logs the floor if the map as loaded had a vector tile there.
+The undo stack also survives the trap preview now; it is cleared on load
+and clear only. Eleven sessions of sixty random edits on eleven levels:
+the save decodes to the screen every time, and undoing all restores
+screen, save and edit list to the start every time.
+
+
 **21 September 2026, later** — a validation pass over the C64 kit found
 three faults: `C` took its base snapshot *before* clearing the map, so
 after a clear, erasing a wall that the old level had at that cell logged
